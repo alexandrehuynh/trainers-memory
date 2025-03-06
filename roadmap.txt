@@ -101,45 +101,31 @@ Implement progressive enhancement for voice features
 -----------------------------------------------------------------------------------
 Next Steps
 -----------------------------------------------------------------------------------
------------------------------------------------------------------------------------
-Test Backend API Functionality
------------------------------------------------------------------------------------
-
-Test the health endpoint at http://localhost:8000/health
-Try creating a test client using the API
-Test accessing workout records
 
 -----------------------------------------------------------------------------------
-Develop Frontend Components
+Implement Workout Detail Page: Create a page to view workout details and edit existing workouts
 -----------------------------------------------------------------------------------
-
-Create authentication screens
-Build client management interface
-Implement workout tracking forms
-
+Add Progress Tracking: Implement charts and graphs to visualize client progress
 -----------------------------------------------------------------------------------
+Create Workout Templates: Allow saving workout templates for quick reuse
+-----------------------------------------------------------------------------------
+Add Search and Filtering: Enhance the client and workout lists with search functionality
+-----------------------------------------------------------------------------------
+Implement User Settings: Add a page for trainers to manage their account settings
+
+
+🚧 Items Still In Progress
 Integrate Frontend and Backend
------------------------------------------------------------------------------------
+🚧 Set up a dedicated API client (instead of individual fetch calls)
+🚧 Implement more robust data fetching with React Query or SWR
+🚧 Create proper middleware for protected routes
 
-Set up API client in Next.js
-Implement data fetching and state management
-Create protected routes
-
------------------------------------------------------------------------------------
-Build Client Management UI
------------------------------------------------------------------------------------
-
-Create client listing page
-Implement client detail view
-Build add/edit client forms
-
------------------------------------------------------------------------------------
 Develop Workout Tracking Features
------------------------------------------------------------------------------------
-
-Create workout record form
-Build workout history view
-Implement spreadsheet import functionality
+🚧 Build detailed workout history view with filtering
+🚧 Implement workout detail page (/workouts/[id])
+🚧 Create workout editing functionality
+🚧 Add client-specific workout history
+🚧 Implement spreadsheet import functionality
 
 -----------------------------------------------------------------------------------
 Add Advanced Features

@@ -3,14 +3,20 @@ from fastapi.security import OAuth2PasswordBearer
 import os
 import jwt
 from datetime import datetime, timedelta
-from .db import supabase
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-# JWT Secret key (should match Supabase JWT secret)
+# Get the JWT secret from environment variables
+# Important: This must match the JWT secret in your Supabase project
 JWT_SECRET = os.getenv("JWT_SECRET")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+
+# For Supabase, this MUST be "HS256"
 JWT_ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_MINUTES = 60
 
 async def get_current_user(token: str = Depends(oauth2_scheme)):
     """Verify JWT token and return user data"""
@@ -21,26 +27,35 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     )
     
     try:
-        # Verify token
+        # Print debug info
+        print(f"Token received: {token[:10]}...")
+        print(f"Using JWT_SECRET: {JWT_SECRET[:5]}...")
+        
+        # Verify the token
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        user_id: str = payload.get("sub")
+        
+        # For Supabase tokens, the user ID is in the 'sub' claim
+        user_id = payload.get("sub")
         if user_id is None:
-            raise credentials_exception
-        
-        # Get user data from Supabase
-        response = supabase.auth.admin.get_user_by_id(user_id)
-        user = response.user
-        
-        if user is None:
+            print("No 'sub' claim found in token")
             raise credentials_exception
             
+        # Look for the user role in the token metadata
+        # Supabase stores custom claims in a specific format
+        user_metadata = payload.get("user_metadata", {})
+        role = user_metadata.get("role", "user")
+        
         return {
-            "id": user.id,
-            "email": user.email,
-            "role": user.user_metadata.get("role", "user") if user.user_metadata else "user"
+            "id": user_id,
+            "role": role,
+            "email": payload.get("email", ""),
         }
         
-    except jwt.PyJWTError:
+    except jwt.PyJWTError as e:
+        print(f"JWT Error: {str(e)}")
+        raise credentials_exception
+    except Exception as e:
+        print(f"Unexpected error: {str(e)}")
         raise credentials_exception
 
 def verify_trainer_role(current_user: dict = Depends(get_current_user)):
