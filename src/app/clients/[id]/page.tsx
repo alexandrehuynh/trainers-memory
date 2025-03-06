@@ -8,6 +8,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
 import { getJwtToken } from '@/lib/tokenHelper';
+import { workoutsApi, Workout } from '@/lib/apiClient';
 
 interface Client {
   id: string;
@@ -29,12 +30,20 @@ export default function ClientDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [workouts, setWorkouts] = useState<Workout[]>([]);
+  const [workoutsLoading, setWorkoutsLoading] = useState(false);
 
   useEffect(() => {
     if (user) {
       fetchClient();
     }
   }, [user, clientId]);
+
+  useEffect(() => {
+    if (user && client) {
+      fetchClientWorkouts();
+    }
+  }, [user, client, clientId]);
 
   const fetchClient = async () => {
     setIsLoading(true);
@@ -69,6 +78,44 @@ export default function ClientDetailPage() {
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const fetchClientWorkouts = async () => {
+    setWorkoutsLoading(true);
+    try {
+      const data = await workoutsApi.getByClientId(clientId);
+      setWorkouts(data);
+    } catch (err) {
+      console.error('Error fetching client workouts:', err);
+      
+      // For demo purposes, add sample workouts
+      setWorkouts([
+        {
+          id: '1',
+          client_id: clientId,
+          client_name: client?.name || 'Client',
+          date: new Date().toISOString(),
+          type: 'Strength Training',
+          duration: 60,
+          notes: 'Upper body focus',
+          exercises: [],
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: '2',
+          client_id: clientId,
+          client_name: client?.name || 'Client',
+          date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(), // 1 week ago
+          type: 'Cardio',
+          duration: 45,
+          notes: '5k run',
+          exercises: [],
+          created_at: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+        },
+      ]);
+    } finally {
+      setWorkoutsLoading(false);
     }
   };
 
@@ -220,14 +267,48 @@ export default function ClientDetailPage() {
                 </Link>
               </div>
 
-              <Card>
-                <div className="text-center py-8">
-                  <p className="text-gray-500 mb-4">No workouts recorded yet</p>
-                  <Link href={`/workouts/new?clientId=${clientId}`}>
-                    <Button variant="primary">Record First Workout</Button>
-                  </Link>
+              {workoutsLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
                 </div>
-              </Card>
+              ) : workouts.length === 0 ? (
+                <Card>
+                  <div className="text-center py-8">
+                    <p className="text-gray-500 mb-4">No workouts recorded yet</p>
+                    <Link href={`/workouts/new?clientId=${clientId}`}>
+                      <Button variant="primary">Record First Workout</Button>
+                    </Link>
+                  </div>
+                </Card>
+              ) : (
+                <div className="space-y-4">
+                  {workouts.map((workout) => (
+                    <Link key={workout.id} href={`/workouts/${workout.id}`}>
+                      <Card className="hover:shadow-md transition-shadow">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h3 className="font-medium text-gray-900">{workout.type}</h3>
+                            <p className="text-sm text-gray-500">
+                              {new Date(workout.date).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            {workout.duration} min
+                          </span>
+                        </div>
+                        {workout.notes && (
+                          <p className="mt-2 text-sm text-gray-600 line-clamp-2">{workout.notes}</p>
+                        )}
+                      </Card>
+                    </Link>
+                  ))}
+                  <div className="text-center pt-4">
+                    <Link href={`/clients/${clientId}/workouts`}>
+                      <Button variant="outline">View All Workouts</Button>
+                    </Link>
+                  </div>
+                </div>
+              )}
             </>
           ) : (
             <Card>

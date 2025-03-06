@@ -7,6 +7,7 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
 import { getJwtToken } from '@/lib/tokenHelper';
+import ImportWorkoutsModal from '@/components/ImportWorkoutsModal';
 
 interface Workout {
   id: string;
@@ -23,6 +24,7 @@ export default function WorkoutsPage() {
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -78,6 +80,14 @@ export default function WorkoutsPage() {
     }
   };
 
+  const handleImportSuccess = (count: number) => {
+    setShowImportModal(false);
+    // Show success message
+    alert(`Successfully imported ${count} workouts`);
+    // Refresh the workout list
+    fetchWorkouts();
+  };
+
   if (authLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -114,23 +124,31 @@ export default function WorkoutsPage() {
         <div className="max-w-6xl mx-auto">
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-2xl font-bold text-gray-900">Workouts</h1>
-            <Link href="/workouts/new">
-              <Button variant="primary">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  className="h-5 w-5 mr-2"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                >
-                  <path
-                    fillRule="evenodd"
-                    d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-                Add New Workout
+            <div className="flex space-x-2">
+              <Button 
+                variant="outline"
+                onClick={() => setShowImportModal(true)}
+              >
+                Import from Spreadsheet
               </Button>
-            </Link>
+              <Link href="/workouts/new">
+                <Button variant="primary">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-5 w-5 mr-2"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                  >
+                    <path
+                      fillRule="evenodd"
+                      d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  Add New Workout
+                </Button>
+              </Link>
+            </div>
           </div>
 
           {error && (
@@ -202,6 +220,14 @@ export default function WorkoutsPage() {
           )}
         </div>
       </main>
+
+      {showImportModal && (
+        <ImportWorkoutsModal
+          isOpen={showImportModal}
+          onClose={() => setShowImportModal(false)}
+          onSuccess={handleImportSuccess}
+        />
+      )}
     </div>
   );
 } 
