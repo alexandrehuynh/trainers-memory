@@ -23,12 +23,13 @@ app.add_middleware(
 )
 
 # Import routers
-from .routers import workouts, ocr, ai_analysis
+from .routers import workouts, ocr, ai_analysis, clients
 
 # Include routers
 app.include_router(workouts.router)
 app.include_router(ocr.router)
 app.include_router(ai_analysis.router)
+app.include_router(clients.router)
 
 @app.get("/")
 async def root():

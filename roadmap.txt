@@ -102,12 +102,12 @@ Implement progressive enhancement for voice features
 Next Steps
 -----------------------------------------------------------------------------------
 -----------------------------------------------------------------------------------
-Complete the Backend Setup
+Test Backend API Functionality
 -----------------------------------------------------------------------------------
 
-Set up a virtual environment and install dependencies
-Configure environment variables
-Run the SQL schema in your Supabase project
+Test the health endpoint at http://localhost:8000/health
+Try creating a test client using the API
+Test accessing workout records
 
 -----------------------------------------------------------------------------------
 Develop Frontend Components
@@ -124,3 +124,27 @@ Integrate Frontend and Backend
 Set up API client in Next.js
 Implement data fetching and state management
 Create protected routes
+
+-----------------------------------------------------------------------------------
+Build Client Management UI
+-----------------------------------------------------------------------------------
+
+Create client listing page
+Implement client detail view
+Build add/edit client forms
+
+-----------------------------------------------------------------------------------
+Develop Workout Tracking Features
+-----------------------------------------------------------------------------------
+
+Create workout record form
+Build workout history view
+Implement spreadsheet import functionality
+
+-----------------------------------------------------------------------------------
+Add Advanced Features
+-----------------------------------------------------------------------------------
+
+Voice recording interface
+OCR for handwritten notes
+AI analysis queries
