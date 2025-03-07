@@ -14,8 +14,15 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-# Initialize OCR processor
-ocr_processor = OCRProcessor(tesseract_cmd=os.getenv("TESSERACT_CMD"))
+# OCR processor will be initialized only when needed
+ocr_processor = None
+
+def get_ocr_processor():
+    global ocr_processor
+    if ocr_processor is None:
+        tesseract_cmd = os.getenv("TESSERACT_CMD")
+        ocr_processor = OCRProcessor(tesseract_cmd=tesseract_cmd)
+    return ocr_processor
 
 @router.post("/process", response_model=Dict[str, Any])
 async def process_workout_image(
@@ -45,10 +52,10 @@ async def process_workout_image(
         image_bytes = await file.read()
         
         # Process image with OCR
-        ocr_text = ocr_processor.process_image(image_bytes)
+        ocr_text = get_ocr_processor().process_image(image_bytes)
         
         # Extract workout data from OCR text
-        workout_records = ocr_processor.extract_workout_data(ocr_text, client_id)
+        workout_records = get_ocr_processor().extract_workout_data(ocr_text, client_id)
         
         if not workout_records:
             return StandardResponse.success(

@@ -27,8 +27,19 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-# Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# OpenAI client will be initialized only when needed
+client = None
+
+def get_openai_client():
+    global client
+    if client is None:
+        api_key = os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            # Return a dummy key for development if no API key is provided
+            print("WARNING: No OpenAI API key found. AI features will not work properly.")
+            api_key = "dummy_key_for_development"
+        client = OpenAI(api_key=api_key)
+    return client
 
 # Helper function to get client name (duplicated from clients.py for now)
 def get_client_name(client_id: str) -> str:
@@ -95,7 +106,7 @@ async def analyze_client_data(
         }
         
         # Call OpenAI for analysis
-        response = client.chat.completions.create(
+        response = get_openai_client().chat.completions.create(
             model="gpt-4",  # Using GPT-4 for best analysis
             messages=[
                 {"role": "system", "content": "You are a fitness analysis assistant that helps trainers understand their clients' workout data. Provide concise, actionable insights."},

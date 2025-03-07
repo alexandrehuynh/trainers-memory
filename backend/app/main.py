@@ -70,11 +70,15 @@ async def get_api_key(api_key: str = Security(api_key_header)) -> Dict[str, Any]
         
     return API_KEYS[api_key]
 
-# Define status route for health checks
-@app.get("/api/health", tags=["System"])
+# Add a simple health check endpoint at root
+@app.get("/")
+async def root():
+    return {"message": "Trainer's Memory API is running", "version": API_VERSION}
+
+# Add a simple health check endpoint
+@app.get("/health")
 async def health_check():
-    """Health check endpoint that returns the API status."""
-    return StandardResponse.success({"status": "healthy"})
+    return {"status": "ok", "time": datetime.now().isoformat()}
 
 # Demo endpoint with authentication
 @app.get(f"/api/{API_VERSION}/me", tags=["Authentication"])
