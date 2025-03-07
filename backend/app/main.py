@@ -123,6 +123,7 @@ app.openapi = custom_openapi
 
 # Import routers last to avoid circular imports
 from app.routers import clients, workouts, intelligence, transformation, communication, analytics, coaching, content
+from app.routers import ai_analysis, ocr
 
 # Mount routers with version prefix
 app.include_router(
@@ -171,6 +172,20 @@ app.include_router(
     content.router,
     prefix=f"/api/{API_VERSION}/content",
     tags=["Content"],
+)
+
+# Add the AI Analysis router
+app.include_router(
+    ai_analysis.router,
+    prefix=f"/api/{API_VERSION}",
+    tags=["Intelligence"],
+)
+
+# Add the OCR router
+app.include_router(
+    ocr.router,
+    prefix=f"/api/{API_VERSION}",
+    tags=["Transformation"],
 )
 
 # Entry point

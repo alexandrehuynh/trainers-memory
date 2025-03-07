@@ -1,41 +1,67 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from typing import List, Optional
+from typing import List, Dict, Any, Optional
 import pandas as pd
 import numpy as np
 from openai import OpenAI
 import os
-from ..models import AIAnalysisRequest, AIAnalysisResponse
-from ..db import get_workout_records, get_client_by_id
-from ..auth import get_current_user, verify_trainer_role
+from pydantic import BaseModel, Field, UUID4
+from datetime import datetime
 
+# Import API key dependency and standard response
+from ..main import get_api_key
+from ..utils.response import StandardResponse
+
+# Define models if they don't exist in a central place
+class AIAnalysisRequest(BaseModel):
+    client_id: str = Field(..., example="c1d2e3f4-g5h6-i7j8-k9l0-m1n2o3p4q5r6")
+    query: str = Field(..., example="What are the trends in bench press performance?")
+
+class AIAnalysisResponse(BaseModel):
+    answer: str
+    data: Optional[Dict[str, Any]] = None
+
+# Create router
 router = APIRouter(
-    prefix="/analysis",
-    tags=["analysis"],
-    dependencies=[Depends(verify_trainer_role)],  # Require trainer role for all endpoints
+    prefix="/intelligence/analysis",
+    tags=["intelligence"],
     responses={404: {"description": "Not found"}},
 )
 
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-@router.post("/", response_model=AIAnalysisResponse)
-async def analyze_client_data(request: AIAnalysisRequest, current_user=Depends(get_current_user)):
-    """Analyze client workout data using natural language queries"""
+# Helper function to get client name (duplicated from clients.py for now)
+def get_client_name(client_id: str) -> str:
+    # In a real implementation, you would fetch this from a database
+    # This is just a mock implementation for demo purposes
+    from .clients import clients_db
+    if client_id in clients_db:
+        return clients_db[client_id]["name"]
+    return "Unknown Client"
+
+@router.post("/analyze", response_model=Dict[str, Any])
+async def analyze_client_data(
+    request: AIAnalysisRequest,
+    client_info: Dict[str, Any] = Depends(get_api_key)
+):
+    """
+    Analyze client workout data using natural language queries
+    
+    This endpoint uses OpenAI to analyze workout data and provide insights
+    based on the specific query provided.
+    """
     try:
-        # Get client information
-        client_data = await get_client_by_id(request.client_id)
-        if not client_data:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Client with ID {request.client_id} not found",
-            )
-            
-        # Get workout records
-        workout_records = await get_workout_records(request.client_id, limit=500)
+        # Get client information (in production, fetch from database)
+        client_name = get_client_name(request.client_id)
+        
+        # Get workout records (in production, fetch from database)
+        from .workouts import workouts_db
+        workout_records = [w for w in workouts_db.values() if w["client_id"] == request.client_id]
         
         if not workout_records:
-            return AIAnalysisResponse(
-                answer="No workout data available for this client. Please add some workout records first."
+            return StandardResponse.success(
+                data={"answer": "No workout data available for this client. Please add some workout records first."},
+                message="Analysis completed with no data"
             )
             
         # Create a pandas DataFrame from workout records for analysis
@@ -48,26 +74,27 @@ async def analyze_client_data(request: AIAnalysisRequest, current_user=Depends(g
         for col in ['sets', 'reps', 'weight']:
             if col in df.columns:
                 df_stats[col] = {
-                    'mean': float(df[col].mean()),
-                    'max': float(df[col].max()),
-                    'min': float(df[col].min())
+                    'mean': float(df[col].mean()) if not df[col].empty else 0,
+                    'max': float(df[col].max()) if not df[col].empty else 0,
+                    'min': float(df[col].min()) if not df[col].empty else 0
                 }
                 
-        # Get exercise frequency
-        exercise_counts = df['exercise'].value_counts().to_dict()
-        
-        # Prepare workout history summary
-        workout_history = df.to_dict(orient='records')
+        # Get exercise frequency if possible
+        exercise_counts = {}
+        if 'exercises' in df.columns:
+            # This is a more complex structure, would need custom handling
+            # For now, we'll just count total exercises
+            exercise_counts = {"total_exercises": sum(len(w.get("exercises", [])) for w in workout_records)}
         
         # Context message for OpenAI
         context = {
-            "client_name": client_data.get("name", "Unknown"),
+            "client_name": client_name,
             "workout_stats": df_stats,
-            "exercise_frequency": exercise_counts,
-            "workout_history": workout_history[:50]  # Limit to 50 most recent workouts
+            "exercise_counts": exercise_counts,
+            "workout_records": workout_records[:10]  # Limit to 10 most recent workouts
         }
         
-        # Function calling with OpenAI
+        # Call OpenAI for analysis
         response = client.chat.completions.create(
             model="gpt-4",  # Using GPT-4 for best analysis
             messages=[
@@ -82,13 +109,17 @@ async def analyze_client_data(request: AIAnalysisRequest, current_user=Depends(g
         # Extract and return the AI's analysis
         answer = response.choices[0].message.content
         
-        return AIAnalysisResponse(
-            answer=answer,
-            data={"client_name": client_data.get("name"), "query": request.query}
+        return StandardResponse.success(
+            data={
+                "answer": answer,
+                "query": request.query,
+                "client_name": client_name
+            },
+            message="Analysis completed successfully"
         )
         
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Analysis failed: {str(e)}",
+        return StandardResponse.error(
+            message=f"Analysis failed: {str(e)}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         ) 

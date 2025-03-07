@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 from uuid import UUID
 
@@ -17,8 +17,7 @@ class Client(ClientBase):
     trainer_id: UUID
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 class WorkoutRecordBase(BaseModel):
     client_id: UUID
@@ -38,8 +37,7 @@ class WorkoutRecord(WorkoutRecordBase):
     created_at: datetime
     updated_at: Optional[datetime] = None
     
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 class VoiceNote(BaseModel):
     id: UUID
@@ -50,8 +48,7 @@ class VoiceNote(BaseModel):
     transcript: Optional[str] = None
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 class AIAnalysisRequest(BaseModel):
     client_id: UUID
@@ -59,4 +56,4 @@ class AIAnalysisRequest(BaseModel):
     
 class AIAnalysisResponse(BaseModel):
     answer: str
-    data: Optional[dict] = None 
+    data: Optional[Dict[str, Any]] = None 
