@@ -8,10 +8,10 @@ distro==1.9.0
 fastapi==0.110.0
 gotrue==1.3.1
 h11==0.14.0
-# Using httpcore version compatible with httpx 0.25.2
-httpcore==1.0.0 
-# Using an httpx version compatible with gotrue (requires httpx<0.26)
-httpx==0.25.2
+# Using httpcore version compatible with httpx 0.24.1 (needs httpcore<0.18.0)
+httpcore==0.17.3
+# Using an httpx version compatible with all requirements (supabase needs <0.25.0)
+httpx==0.24.1
 idna==3.10
 iniconfig==2.0.0
 jiter==0.8.2
