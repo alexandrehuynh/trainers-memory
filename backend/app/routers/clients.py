@@ -1,162 +1,179 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from typing import List, Optional
-from uuid import UUID
-from ..models import ClientCreate, Client
-from ..db import supabase
-from ..auth import get_current_user, verify_trainer_role
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
+from typing import List, Dict, Any, Optional
+from pydantic import BaseModel, Field, EmailStr
+from datetime import datetime
+import uuid
 
-router = APIRouter(
-    prefix="/clients",
-    tags=["clients"],
-    responses={404: {"description": "Not found"}},
-)
+# Import API key dependency and standard response
+from ..main import get_api_key
+from ..utils.response import StandardResponse
 
-# Helper functions for database operations
-async def get_client_by_id(client_id: str, trainer_id: str):
-    """Get client by ID, ensuring it belongs to the trainer"""
-    response = (
-        supabase.table("clients")
-        .select("*")
-        .eq("id", client_id)
-        .eq("trainer_id", trainer_id)
-        .execute()
+# Define models
+class ClientBase(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100, example="John Doe")
+    email: EmailStr = Field(..., example="john.doe@example.com")
+    phone: Optional[str] = Field(None, min_length=5, max_length=20, example="555-123-4567")
+    notes: Optional[str] = Field(None, max_length=1000, example="New client interested in strength training")
+
+class ClientCreate(ClientBase):
+    pass
+
+class ClientUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100, example="John Doe")
+    email: Optional[EmailStr] = Field(None, example="john.doe@example.com")
+    phone: Optional[str] = Field(None, min_length=5, max_length=20, example="555-123-4567")
+    notes: Optional[str] = Field(None, max_length=1000, example="New client interested in strength training")
+
+class Client(ClientBase):
+    id: str = Field(..., example="c1d2e3f4-g5h6-i7j8-k9l0-m1n2o3p4q5r6")
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+# Create router
+router = APIRouter()
+
+# In-memory data store (replace with database in production)
+clients_db = {}
+
+# GET /clients - List all clients
+@router.get("/clients", response_model=Dict[str, Any])
+async def get_clients(
+    skip: int = Query(0, ge=0, description="Number of clients to skip"),
+    limit: int = Query(100, ge=1, le=100, description="Maximum number of clients to return"),
+    client_info: Dict[str, Any] = Depends(get_api_key)
+):
+    """
+    Retrieve a list of clients.
+    
+    - **skip**: Number of clients to skip (pagination)
+    - **limit**: Maximum number of clients to return (pagination)
+    """
+    clients_list = list(clients_db.values())
+    paginated_clients = clients_list[skip:skip+limit]
+    
+    return StandardResponse.success(
+        data={
+            "clients": paginated_clients,
+            "total": len(clients_db),
+            "skip": skip,
+            "limit": limit
+        },
+        message="Clients retrieved successfully"
     )
-    if response.data:
-        return response.data[0]
-    return None
 
-async def get_clients_by_trainer(trainer_id: str, limit: int = 100):
-    """Get all clients for a trainer"""
-    response = (
-        supabase.table("clients")
-        .select("*")
-        .eq("trainer_id", trainer_id)
-        .limit(limit)
-        .execute()
+# GET /clients/{client_id} - Get a specific client
+@router.get("/clients/{client_id}", response_model=Dict[str, Any])
+async def get_client(
+    client_id: str = Path(..., description="The ID of the client to retrieve"),
+    client_info: Dict[str, Any] = Depends(get_api_key)
+):
+    """
+    Retrieve a specific client by ID.
+    
+    - **client_id**: The unique identifier of the client
+    """
+    if client_id not in clients_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Client with ID {client_id} not found"
+        )
+    
+    return StandardResponse.success(
+        data=clients_db[client_id],
+        message="Client retrieved successfully"
     )
-    return response.data
 
-async def create_client(client_data: dict):
-    """Create a new client"""
-    response = supabase.table("clients").insert(client_data).execute()
-    return response.data
-
-async def update_client(client_id: str, client_data: dict):
-    """Update an existing client"""
-    response = (
-        supabase.table("clients")
-        .update(client_data)
-        .eq("id", client_id)
-        .execute()
+# POST /clients - Create a new client
+@router.post("/clients", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
+async def create_client(
+    client: ClientCreate,
+    client_info: Dict[str, Any] = Depends(get_api_key)
+):
+    """
+    Create a new client.
+    
+    - **client**: Client data to create
+    """
+    # Generate a unique ID
+    client_id = str(uuid.uuid4())
+    timestamp = datetime.now()
+    
+    # Create the client record
+    new_client = Client(
+        id=client_id,
+        created_at=timestamp,
+        **client.model_dump()
     )
-    return response.data
-
-async def delete_client(client_id: str):
-    """Delete a client"""
-    response = (
-        supabase.table("clients")
-        .delete()
-        .eq("id", client_id)
-        .execute()
+    
+    # Store in our mock database
+    clients_db[client_id] = new_client.model_dump()
+    
+    return StandardResponse.success(
+        data=new_client.model_dump(),
+        message="Client created successfully"
     )
-    return response.data
 
-# API Endpoints
-@router.post("/", response_model=List[Client])
-async def create_new_client(client: ClientCreate, current_user=Depends(verify_trainer_role)):
-    """Create a new client for the trainer"""
-    try:
-        # Convert Pydantic model to dict
-        client_data = client.model_dump()
-        
-        # Add trainer_id
-        client_data["trainer_id"] = current_user["id"]
-        
-        # Create client
-        result = await create_client(client_data)
-        return result
-    except Exception as e:
+# PUT /clients/{client_id} - Update a client
+@router.put("/clients/{client_id}", response_model=Dict[str, Any])
+async def update_client(
+    client_update: ClientUpdate,
+    client_id: str = Path(..., description="The ID of the client to update"),
+    client_info: Dict[str, Any] = Depends(get_api_key)
+):
+    """
+    Update an existing client.
+    
+    - **client_id**: The unique identifier of the client to update
+    - **client_update**: Client data to update
+    """
+    if client_id not in clients_db:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to create client: {str(e)}",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Client with ID {client_id} not found"
         )
+    
+    # Get existing client
+    existing_client = clients_db[client_id]
+    
+    # Update fields that are provided
+    update_data = client_update.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        existing_client[field] = value
+    
+    # Update the timestamp
+    existing_client["updated_at"] = datetime.now()
+    
+    # Save the updated client
+    clients_db[client_id] = existing_client
+    
+    return StandardResponse.success(
+        data=existing_client,
+        message="Client updated successfully"
+    )
 
-@router.get("/", response_model=List[Client])
-async def get_all_clients(limit: int = 100, current_user=Depends(verify_trainer_role)):
-    """Get all clients for the trainer"""
-    try:
-        clients = await get_clients_by_trainer(current_user["id"], limit)
-        return clients
-    except Exception as e:
+# DELETE /clients/{client_id} - Delete a client
+@router.delete("/clients/{client_id}", response_model=Dict[str, Any])
+async def delete_client(
+    client_id: str = Path(..., description="The ID of the client to delete"),
+    client_info: Dict[str, Any] = Depends(get_api_key)
+):
+    """
+    Delete a client.
+    
+    - **client_id**: The unique identifier of the client to delete
+    """
+    if client_id not in clients_db:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve clients: {str(e)}",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Client with ID {client_id} not found"
         )
-
-@router.get("/{client_id}", response_model=Client)
-async def get_client(client_id: str, current_user=Depends(verify_trainer_role)):
-    """Get a specific client by ID"""
-    try:
-        client = await get_client_by_id(client_id, current_user["id"])
-        if not client:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Client with ID {client_id} not found",
-            )
-        return client
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to retrieve client: {str(e)}",
-        )
-
-@router.put("/{client_id}", response_model=List[Client])
-async def update_client_info(client_id: str, client: ClientCreate, current_user=Depends(verify_trainer_role)):
-    """Update a client's information"""
-    try:
-        # Check if client exists and belongs to this trainer
-        existing_client = await get_client_by_id(client_id, current_user["id"])
-        if not existing_client:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Client with ID {client_id} not found",
-            )
-        
-        # Convert Pydantic model to dict
-        client_data = client.model_dump()
-        
-        # Update client
-        result = await update_client(client_id, client_data)
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update client: {str(e)}",
-        )
-
-@router.delete("/{client_id}", response_model=List[Client])
-async def delete_client_record(client_id: str, current_user=Depends(verify_trainer_role)):
-    """Delete a client"""
-    try:
-        # Check if client exists and belongs to this trainer
-        existing_client = await get_client_by_id(client_id, current_user["id"])
-        if not existing_client:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Client with ID {client_id} not found",
-            )
-        
-        # Delete client
-        result = await delete_client(client_id)
-        return result
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to delete client: {str(e)}",
-        )
+    
+    # Remove the client
+    deleted_client = clients_db.pop(client_id)
+    
+    return StandardResponse.success(
+        data={"id": client_id},
+        message="Client deleted successfully"
+    )
