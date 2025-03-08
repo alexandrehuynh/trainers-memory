@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Security, status
+from fastapi import FastAPI, Depends, HTTPException, Security, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.security import APIKeyHeader
@@ -42,19 +42,30 @@ API_KEYS = {}  # In production, use a database
 
 # Load API keys from environment variables (for development)
 # Format: PREFIX_API_KEY_NAME=value (e.g., TRAINERS_MEMORY_API_KEY_ACME=12345)
+print("Loading API keys from environment variables...")
 for env_key, env_value in os.environ.items():
     if env_key.startswith("TRAINERS_MEMORY_API_KEY_"):
         client_name = env_key.replace("TRAINERS_MEMORY_API_KEY_", "").lower()
         API_KEYS[env_value] = {"client": client_name, "created": datetime.now().isoformat()}
+        print(f"Loaded API key for client: {client_name} with key: {env_value[:4]}...")
 
 # For demo purposes, create a test key if none exists
 if not API_KEYS:
-    test_key = "test_api_key_123456"
-    API_KEYS[test_key] = {"client": "test_client", "created": datetime.now().isoformat()}
+    print("No API keys found in environment, creating a test key...")
+    test_key = "test_key_12345"
+    API_KEYS[test_key] = {"client": "test", "created": datetime.now().isoformat()}
+    print(f"Created test API key: {test_key}")
+
+print(f"Available API Keys: {list(API_KEYS.keys())}")
+print(f"Total API keys loaded: {len(API_KEYS)}")
 
 async def get_api_key(api_key: str = Security(api_key_header)) -> Dict[str, Any]:
     """Validate the API key and return client info."""
+    print(f"API Key received: {api_key}")
+    print(f"Available API Keys: {list(API_KEYS.keys())}")
+    
     if api_key is None:
+        print("API Key is None")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="API Key header is missing",
@@ -62,12 +73,14 @@ async def get_api_key(api_key: str = Security(api_key_header)) -> Dict[str, Any]
         )
         
     if api_key not in API_KEYS:
+        print(f"API Key {api_key} is not valid")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid API Key",
             headers={"WWW-Authenticate": API_KEY_NAME},
         )
-        
+    
+    print(f"API Key {api_key} is valid")
     return API_KEYS[api_key]
 
 # Add a simple health check endpoint at root
@@ -85,6 +98,22 @@ async def health_check():
 async def get_my_info(client_info: Dict[str, Any] = Depends(get_api_key)):
     """Return the client information associated with the API key."""
     return StandardResponse.success(client_info)
+
+# Test endpoint without authentication
+@app.get("/api/v1/test-auth", tags=["Authentication"])
+async def test_auth(api_key: Optional[str] = None):
+    """Test endpoint for API key authentication without requiring it."""
+    headers = {}
+    for key, value in request.headers.items():
+        if key.lower() != "authorization":  # Don't show auth headers in logs
+            headers[key] = value
+            
+    return {
+        "message": "Test endpoint that doesn't require authentication",
+        "received_api_key": api_key,
+        "headers": headers,
+        "available_keys": list(API_KEYS.keys())
+    }
 
 # Custom OpenAPI schema
 def custom_openapi():
