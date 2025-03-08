@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Security, status, Request
+from fastapi import FastAPI, Depends, HTTPException, Security, status, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.openapi.utils import get_openapi
 from fastapi.security import APIKeyHeader
@@ -59,13 +59,28 @@ if not API_KEYS:
 print(f"Available API Keys: {list(API_KEYS.keys())}")
 print(f"Total API keys loaded: {len(API_KEYS)}")
 
-async def get_api_key(api_key: str = Security(api_key_header)) -> Dict[str, Any]:
+async def get_api_key(request: Request, api_key_header_value: Optional[str] = Header(None, alias=API_KEY_NAME)) -> Dict[str, Any]:
     """Validate the API key and return client info."""
-    print(f"API Key received: {api_key}")
+    print(f"API Key from header: {api_key_header_value}")
     print(f"Available API Keys: {list(API_KEYS.keys())}")
     
-    if api_key is None:
-        print("API Key is None")
+    # Debug request headers
+    print("All request headers:")
+    for name, value in request.headers.items():
+        if name.lower() != "authorization":  # Don't show auth in logs
+            print(f"  {name}: {value}")
+    
+    # Check for API key in header with case-insensitive match
+    api_key = api_key_header_value
+    if not api_key:
+        for k, v in request.headers.items():
+            if k.lower() == API_KEY_NAME.lower():
+                api_key = v
+                print(f"Found API key in headers with different case: {k}")
+                break
+    
+    if not api_key:
+        print("API Key is None or not found in headers")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="API Key header is missing",
@@ -101,17 +116,30 @@ async def get_my_info(client_info: Dict[str, Any] = Depends(get_api_key)):
 
 # Test endpoint without authentication
 @app.get("/api/v1/test-auth", tags=["Authentication"])
-async def test_auth(api_key: Optional[str] = None):
+async def test_auth(request: Request):
     """Test endpoint for API key authentication without requiring it."""
-    headers = {}
-    for key, value in request.headers.items():
-        if key.lower() != "authorization":  # Don't show auth headers in logs
-            headers[key] = value
-            
+    # Print all headers for debugging
+    print("Debug headers in test-auth endpoint:")
+    headers_dict = {}
+    for name, value in request.headers.items():
+        if name.lower() != "authorization":  # Don't show auth data
+            print(f"  {name}: {value}")
+            headers_dict[name] = value
+    
+    # Check for API key in any of the headers
+    api_key = None
+    for name, value in request.headers.items():
+        if name.lower() == API_KEY_NAME.lower():
+            api_key = value
+            break
+    
     return {
-        "message": "Test endpoint that doesn't require authentication",
-        "received_api_key": api_key,
-        "headers": headers,
+        "message": "Test authentication endpoint",
+        "api_key_found": api_key is not None,
+        "api_key_length": len(api_key) if api_key else 0,
+        "api_key_valid": api_key in API_KEYS if api_key else False,
+        "api_key_name_checking": API_KEY_NAME,
+        "headers": headers_dict,
         "available_keys": list(API_KEYS.keys())
     }
 
@@ -128,16 +156,21 @@ def custom_openapi():
     )
     
     # Add API Key security scheme
-    openapi_schema["components"] = {
-        "securitySchemes": {
-            API_KEY_NAME: {
-                "type": "apiKey",
-                "in": "header",
-                "name": API_KEY_NAME,
-                "description": "API Key Authentication",
-            }
+    if "components" not in openapi_schema:
+        openapi_schema["components"] = {}
+        
+    openapi_schema["components"]["securitySchemes"] = {
+        API_KEY_NAME: {
+            "type": "apiKey",
+            "in": "header",
+            "name": API_KEY_NAME,
+            "description": "API Key Authentication",
         }
     }
+    
+    # Make sure the schemas section exists
+    if "schemas" not in openapi_schema["components"]:
+        openapi_schema["components"]["schemas"] = {}
     
     # Apply security to all routes
     openapi_schema["security"] = [{API_KEY_NAME: []}]
