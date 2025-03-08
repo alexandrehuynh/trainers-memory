@@ -9,7 +9,7 @@ import os
 from typing import AsyncGenerator, Generator
 from sqlalchemy import create_engine, MetaData
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import QueuePool
 from contextlib import contextmanager
@@ -45,8 +45,12 @@ async_engine = create_async_engine(
 
 # Create session factories
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-AsyncSessionLocal = async_sessionmaker(
-    async_engine, expire_on_commit=False, class_=AsyncSession
+AsyncSessionLocal = sessionmaker(
+    class_=AsyncSession,
+    autocommit=False,
+    autoflush=False,
+    bind=async_engine,
+    expire_on_commit=False
 )
 
 # Initialize database connection
@@ -77,11 +81,11 @@ def get_db() -> Generator[Session, None, None]:
 
 async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
     """Get an asynchronous database session."""
-    async with AsyncSessionLocal() as session:
-        try:
-            yield session
-        finally:
-            await session.close()
+    session = AsyncSessionLocal()
+    try:
+        yield session
+    finally:
+        await session.close()
 
 # Connect and disconnect methods for startup/shutdown events
 async def connect_to_db():
