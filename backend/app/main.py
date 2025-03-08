@@ -9,6 +9,10 @@ from datetime import datetime
 # Import StandardResponse from utils
 from app.utils.response import StandardResponse, API_VERSION
 
+# Import database components
+from app.db import connect_to_db, disconnect_from_db, AsyncAPIKeyRepository, get_async_db
+from sqlalchemy.ext.asyncio import AsyncSession
+
 # API title and description
 API_TITLE = "Trainer's Memory API"
 API_DESCRIPTION = """
@@ -59,10 +63,13 @@ if not API_KEYS:
 print(f"Available API Keys: {list(API_KEYS.keys())}")
 print(f"Total API keys loaded: {len(API_KEYS)}")
 
-async def get_api_key(request: Request, api_key_header_value: Optional[str] = Header(None, alias=API_KEY_NAME)) -> Dict[str, Any]:
+async def get_api_key(
+    request: Request, 
+    api_key_header_value: Optional[str] = Header(None, alias=API_KEY_NAME),
+    db: AsyncSession = Depends(get_async_db)
+) -> Dict[str, Any]:
     """Validate the API key and return client info."""
     print(f"API Key from header: {api_key_header_value}")
-    print(f"Available API Keys: {list(API_KEYS.keys())}")
     
     # Debug request headers
     print("All request headers:")
@@ -86,8 +93,29 @@ async def get_api_key(request: Request, api_key_header_value: Optional[str] = He
             detail="API Key header is missing",
             headers={"WWW-Authenticate": API_KEY_NAME},
         )
-        
-    if api_key not in API_KEYS:
+    
+    # Check if key exists in database
+    api_key_repo = AsyncAPIKeyRepository(db)
+    api_key_record = await api_key_repo.get_by_key(api_key)
+    
+    # Fall back to environment variables during development/migration
+    client_info = None
+    if not api_key_record and api_key in API_KEYS:
+        print(f"API key found in environment variables: {api_key}")
+        client_info = API_KEYS[api_key]
+    elif api_key_record:
+        print(f"API key found in database: {api_key}")
+        # Update last used timestamp
+        await api_key_repo.update(api_key_record.id, {"last_used_at": datetime.utcnow()})
+        # Return client info
+        client_info = {
+            "client_id": str(api_key_record.client_id),
+            "key_id": str(api_key_record.id),
+            "name": api_key_record.name,
+            "created": api_key_record.created_at.isoformat()
+        }
+    
+    if not client_info:
         print(f"API Key {api_key} is not valid")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -96,7 +124,7 @@ async def get_api_key(request: Request, api_key_header_value: Optional[str] = He
         )
     
     print(f"API Key {api_key} is valid")
-    return API_KEYS[api_key]
+    return client_info
 
 # Add a simple health check endpoint at root
 @app.get("/")
@@ -253,6 +281,21 @@ app.include_router(
     prefix=f"/api/{API_VERSION}",
     tags=["Transformation"],
 )
+
+# Register startup and shutdown events
+@app.on_event("startup")
+async def startup():
+    """Run startup tasks."""
+    print("Starting up the application...")
+    await connect_to_db()
+    print("Connected to database")
+
+@app.on_event("shutdown")
+async def shutdown():
+    """Run shutdown tasks."""
+    print("Shutting down the application...")
+    await disconnect_from_db()
+    print("Disconnected from database")
 
 # Entry point
 if __name__ == "__main__":
