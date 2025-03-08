@@ -1,3 +1,22 @@
+"""
+AI Analysis Module
+
+This module provides AI-powered analysis of client workout data using OpenAI's API.
+It implements:
+1. Intelligent model selection with fallbacks (gpt-4o-mini → gpt-3.5-turbo → gpt-3.5-turbo-16k)
+2. Rate limiting (3 requests per minute) to comply with OpenAI's free tier limits
+3. Graceful handling of rate limit errors with automatic waiting and retries
+4. Status endpoint to monitor current rate limit usage
+
+Usage:
+- POST /api/v1/intelligence/analysis/analyze - Analyze client workout data
+- GET /api/v1/intelligence/analysis/rate-limit-status - Check current rate limit status
+
+Environment variables:
+- OPENAI_API_KEY: Your OpenAI API key
+- OPENAI_MODEL: (Optional) Override the default model (gpt-4o-mini)
+"""
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List, Dict, Any, Optional
 import pandas as pd
@@ -6,6 +25,8 @@ from openai import OpenAI
 import os
 from pydantic import BaseModel, Field, UUID4
 from datetime import datetime
+import time
+from collections import deque
 
 # Import API key dependency and standard response
 from ..main import get_api_key
@@ -19,6 +40,28 @@ class AIAnalysisRequest(BaseModel):
 class AIAnalysisResponse(BaseModel):
     answer: str
     data: Optional[Dict[str, Any]] = None
+
+# Simple rate limiter for OpenAI API
+class SimpleRateLimiter:
+    def __init__(self, max_requests, time_window):
+        self.max_requests = max_requests
+        self.time_window = time_window  # in seconds
+        self.request_timestamps = deque()
+    
+    def can_make_request(self):
+        # Remove timestamps older than the time window
+        current_time = time.time()
+        while self.request_timestamps and current_time - self.request_timestamps[0] > self.time_window:
+            self.request_timestamps.popleft()
+        
+        # Check if we're under the limit
+        return len(self.request_timestamps) < self.max_requests
+    
+    def add_request(self):
+        self.request_timestamps.append(time.time())
+
+# Create a rate limiter instance (3 requests per minute)
+rate_limiter = SimpleRateLimiter(max_requests=3, time_window=60)
 
 # Create router
 router = APIRouter(
@@ -43,11 +86,11 @@ def get_openai_client():
 
 # Get the best available OpenAI model
 def get_best_available_model():
-    # Try to use environment variable first
-    model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")  # Default to gpt-3.5-turbo if not specified
+    # Try to use environment variable first, default to gpt-4o-mini
+    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     
     # Fallback models in order of preference
-    fallback_models = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k"]
+    fallback_models = ["gpt-4o-mini", "gpt-3.5-turbo", "gpt-3.5-turbo-16k"]
     
     if model not in fallback_models:
         fallback_models.insert(0, model)  # Add user's preferred model as first choice
@@ -59,6 +102,21 @@ def create_chat_completion(messages, temperature=0.1, max_tokens=500):
     models = get_best_available_model()
     last_error = None
     
+    # Check if we're approaching rate limit and wait if needed
+    current_time = time.time()
+    # Clean up expired timestamps
+    while rate_limiter.request_timestamps and current_time - rate_limiter.request_timestamps[0] > rate_limiter.time_window:
+        rate_limiter.request_timestamps.popleft()
+    
+    # If we're at maximum capacity, wait for the oldest request to expire
+    if len(rate_limiter.request_timestamps) >= rate_limiter.max_requests:
+        oldest_timestamp = rate_limiter.request_timestamps[0]
+        wait_time = rate_limiter.time_window - (current_time - oldest_timestamp) + 1  # Add 1 second buffer
+        if wait_time > 0:
+            print(f"Rate limit approached. Waiting {wait_time} seconds before making next request...")
+            time.sleep(wait_time)
+    
+    # Try each model in sequence
     for model in models:
         try:
             print(f"Attempting to use model: {model}")
@@ -69,10 +127,18 @@ def create_chat_completion(messages, temperature=0.1, max_tokens=500):
                 max_tokens=max_tokens,
             )
             print(f"Successfully used model: {model}")
+            # Record this successful request in our rate limiter
+            rate_limiter.add_request()
             return response
         except Exception as e:
             last_error = e
             print(f"Failed to use model {model}: {str(e)}")
+            
+            # Check if this is a rate limit error
+            error_str = str(e).lower()
+            if "rate limit" in error_str or "429" in error_str:
+                print("Rate limit exceeded. Waiting 20 seconds before trying next model...")
+                time.sleep(20)  # Wait 20 seconds before trying next model
             # Continue to next model
     
     # If we've tried all models and none worked, raise the last error
@@ -101,6 +167,16 @@ async def analyze_client_data(
     This endpoint uses OpenAI to analyze workout data and provide insights
     based on the specific query provided.
     """
+    # Check rate limit
+    if not rate_limiter.can_make_request():
+        return StandardResponse.error(
+            message="Rate limit exceeded. Please try again later.",
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS
+        )
+    
+    # Add this request to the rate limiter
+    rate_limiter.add_request()
+    
     try:
         # Get client information (in production, fetch from database)
         client_name = get_client_name(request.client_id)
@@ -180,4 +256,36 @@ async def analyze_client_data(
         return StandardResponse.error(
             message=f"Analysis failed: {error_detail}",
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-        ) 
+        )
+
+# Add a rate limit status endpoint
+@router.get("/rate-limit-status", response_model=Dict[str, Any])
+async def get_rate_limit_status(
+    client_info: Dict[str, Any] = Depends(get_api_key)
+):
+    """Get the current status of the rate limiter"""
+    # Calculate remaining capacity
+    current_time = time.time()
+    # Remove expired timestamps
+    while rate_limiter.request_timestamps and current_time - rate_limiter.request_timestamps[0] > rate_limiter.time_window:
+        rate_limiter.request_timestamps.popleft()
+    
+    used_capacity = len(rate_limiter.request_timestamps)
+    remaining_capacity = rate_limiter.max_requests - used_capacity
+    
+    # Calculate time until next available slot if at capacity
+    time_until_reset = 0
+    if used_capacity >= rate_limiter.max_requests and rate_limiter.request_timestamps:
+        time_until_reset = int(rate_limiter.time_window - (current_time - rate_limiter.request_timestamps[0]))
+    
+    return StandardResponse.success(
+        data={
+            "max_requests_per_minute": rate_limiter.max_requests,
+            "requests_made_in_window": used_capacity,
+            "requests_remaining": remaining_capacity,
+            "seconds_until_reset": time_until_reset if time_until_reset > 0 else 0,
+            "window_size_seconds": rate_limiter.time_window,
+            "current_openai_model": os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+        },
+        message="Rate limit status retrieved successfully"
+    ) 
