@@ -41,6 +41,46 @@ def get_openai_client():
         client = OpenAI(api_key=api_key)
     return client
 
+# Get the best available OpenAI model
+def get_best_available_model():
+    # Try to use environment variable first
+    model = os.getenv("OPENAI_MODEL", "gpt-3.5-turbo")  # Default to gpt-3.5-turbo if not specified
+    
+    # Fallback models in order of preference
+    fallback_models = ["gpt-3.5-turbo", "gpt-3.5-turbo-16k"]
+    
+    if model not in fallback_models:
+        fallback_models.insert(0, model)  # Add user's preferred model as first choice
+    
+    return fallback_models
+
+# Safely create chat completion with fallbacks
+def create_chat_completion(messages, temperature=0.1, max_tokens=500):
+    models = get_best_available_model()
+    last_error = None
+    
+    for model in models:
+        try:
+            print(f"Attempting to use model: {model}")
+            response = get_openai_client().chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            print(f"Successfully used model: {model}")
+            return response
+        except Exception as e:
+            last_error = e
+            print(f"Failed to use model {model}: {str(e)}")
+            # Continue to next model
+    
+    # If we've tried all models and none worked, raise the last error
+    if last_error:
+        raise last_error
+    else:
+        raise Exception("All models failed but no error was recorded")
+
 # Helper function to get client name (duplicated from clients.py for now)
 def get_client_name(client_id: str) -> str:
     # In a real implementation, you would fetch this from a database
@@ -105,17 +145,14 @@ async def analyze_client_data(
             "workout_records": workout_records[:10]  # Limit to 10 most recent workouts
         }
         
-        # Call OpenAI for analysis
-        response = get_openai_client().chat.completions.create(
-            model="gpt-4",  # Using GPT-4 for best analysis
-            messages=[
-                {"role": "system", "content": "You are a fitness analysis assistant that helps trainers understand their clients' workout data. Provide concise, actionable insights."},
-                {"role": "user", "content": f"Analyze the following client workout data. Question: {request.query}"},
-                {"role": "system", "content": f"Here's the client data: {str(context)}"}
-            ],
-            temperature=0.1,  # Low temperature for more factual responses
-            max_tokens=500,   # Limit response length
-        )
+        # Call OpenAI for analysis using our helper with fallbacks
+        messages = [
+            {"role": "system", "content": "You are a fitness analysis assistant that helps trainers understand their clients' workout data. Provide concise, actionable insights."},
+            {"role": "user", "content": f"Analyze the following client workout data. Question: {request.query}"},
+            {"role": "system", "content": f"Here's the client data: {str(context)}"}
+        ]
+        
+        response = create_chat_completion(messages, temperature=0.1, max_tokens=500)
         
         # Extract and return the AI's analysis
         answer = response.choices[0].message.content
@@ -124,13 +161,23 @@ async def analyze_client_data(
             data={
                 "answer": answer,
                 "query": request.query,
-                "client_name": client_name
+                "client_name": client_name,
+                "model_used": response.model  # Include which model was actually used
             },
             message="Analysis completed successfully"
         )
         
     except Exception as e:
+        import traceback
+        print("Error in analyze_client_data:")
+        traceback.print_exc()  # Print full stack trace for debugging
+        
+        error_detail = str(e)
+        # Add more context if it's an OpenAI API error
+        if "openai" in error_detail.lower():
+            error_detail = f"Error code: {getattr(e, 'status_code', 'unknown')} - {error_detail}"
+        
         return StandardResponse.error(
-            message=f"Analysis failed: {str(e)}",
+            message=f"Analysis failed: {error_detail}",
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
         ) 
