@@ -13,6 +13,7 @@ import { getJwtToken } from '@/lib/tokenHelper';
 interface Client {
   id: string;
   name: string;
+  email: string;
 }
 
 interface WorkoutFormData {
@@ -72,26 +73,27 @@ export default function NewWorkoutPage() {
     setError(null);
     
     try {
-      // Replace with your actual API endpoint
-      const response = await fetch('http://localhost:8000/api/clients', {
+      // Fetch clients for the dropdown
+      const response = await fetch('http://localhost:8000/api/v1/clients', {
         headers: {
           Authorization: `Bearer ${getJwtToken() || ''}`,
+          'X-API-Key': 'test_key_12345'
         },
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch clients');
       }
-      
+
       const data = await response.json();
       setClients(data);
     } catch (err) {
       console.error('Error fetching clients:', err);
-      
-      // For demo purposes, add some sample clients
+      setError('Failed to load clients. Please try again later.');
+      // Sample data for development purposes
       setClients([
-        { id: '1', name: 'John Doe' },
-        { id: '2', name: 'Jane Smith' },
+        { id: '1', name: 'John Doe', email: 'john@example.com' },
+        { id: '2', name: 'Jane Smith', email: 'jane@example.com' },
       ]);
     } finally {
       setIsLoading(false);
@@ -145,12 +147,12 @@ export default function NewWorkoutPage() {
     setError(null);
 
     try {
-      // Replace with your actual API endpoint
-      const response = await fetch('http://localhost:8000/api/workouts', {
+      const response = await fetch('http://localhost:8000/api/v1/workouts', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${getJwtToken() || ''}`,
+          'X-API-Key': 'test_key_12345'
         },
         body: JSON.stringify(formData),
       });
@@ -159,16 +161,11 @@ export default function NewWorkoutPage() {
         throw new Error('Failed to create workout');
       }
 
-      // Redirect to workouts list on success
+      // Redirect to workouts page on success
       router.push('/workouts');
     } catch (err) {
       console.error('Error creating workout:', err);
       setError('Failed to create workout. Please try again.');
-      
-      // For demo purposes, simulate success and redirect
-      setTimeout(() => {
-        router.push('/workouts');
-      }, 1000);
     } finally {
       setIsSaving(false);
     }

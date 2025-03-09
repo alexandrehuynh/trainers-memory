@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button';
 import Link from 'next/link';
 import { getJwtToken } from '@/lib/tokenHelper';
 import { workoutsApi, Workout } from '@/lib/apiClient';
+import { clientsApi } from '@/lib/apiClient';
 
 interface Client {
   id: string;
@@ -50,30 +51,20 @@ export default function ClientDetailPage() {
     setError(null);
     
     try {
-      // Replace with your actual API endpoint
-      const response = await fetch(`http://localhost:8000/api/clients/${clientId}`, {
-        headers: {
-          Authorization: `Bearer ${getJwtToken() || ''}`,
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch client details');
-      }
-      
-      const data = await response.json();
-      setClient(data);
+      const client = await clientsApi.getById(clientId);
+      setClient(client);
+      console.log('Successfully fetched client from API:', client);
     } catch (err) {
       console.error('Error fetching client:', err);
-      setError('Failed to load client details. Please try again later.');
+      setError('Failed to load client. Please try again later.');
       
-      // For demo purposes, create a sample client
+      // For demo purposes
       setClient({
-        id: clientId,
+        id: clientId || 'sample-id',
         name: 'John Doe',
         email: 'john@example.com',
         phone: '555-123-4567',
-        notes: 'Client is interested in strength training and weight loss. Has previous knee injury.',
+        notes: 'Regular client since 2022',
         created_at: new Date().toISOString(),
       });
     } finally {
@@ -84,8 +75,9 @@ export default function ClientDetailPage() {
   const fetchClientWorkouts = async () => {
     setWorkoutsLoading(true);
     try {
-      const data = await workoutsApi.getByClientId(clientId);
-      setWorkouts(data);
+      const workouts = await workoutsApi.getByClientId(clientId);
+      setWorkouts(workouts);
+      console.log('Successfully fetched client workouts from API:', workouts);
     } catch (err) {
       console.error('Error fetching client workouts:', err);
       
@@ -123,11 +115,11 @@ export default function ClientDetailPage() {
     setIsDeleting(true);
     
     try {
-      // Replace with your actual API endpoint
-      const response = await fetch(`http://localhost:8000/api/clients/${clientId}`, {
+      const response = await fetch(`http://localhost:8000/api/v1/clients/${clientId}`, {
         method: 'DELETE',
         headers: {
           Authorization: `Bearer ${getJwtToken() || ''}`,
+          'X-API-Key': 'test_key_12345'
         },
       });
       
@@ -135,14 +127,14 @@ export default function ClientDetailPage() {
         throw new Error('Failed to delete client');
       }
       
-      // Redirect to clients list on success
       router.push('/clients');
     } catch (err) {
       console.error('Error deleting client:', err);
       setError('Failed to delete client. Please try again.');
       
-      // For demo purposes, simulate success and redirect
+      // For demo purposes, simulate success
       setTimeout(() => {
+        setShowDeleteConfirm(false);
         router.push('/clients');
       }, 1000);
     } finally {

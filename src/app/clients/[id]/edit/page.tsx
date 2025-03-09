@@ -44,15 +44,15 @@ export default function EditClientPage() {
     setError(null);
     
     try {
-      // Replace with your actual API endpoint
-      const response = await fetch(`http://localhost:8000/api/clients/${clientId}`, {
+      const response = await fetch(`http://localhost:8000/api/v1/clients/${clientId}`, {
         headers: {
           Authorization: `Bearer ${getJwtToken() || ''}`,
+          'X-API-Key': 'test_key_12345'
         },
       });
       
       if (!response.ok) {
-        throw new Error('Failed to fetch client details');
+        throw new Error('Failed to fetch client');
       }
       
       const data = await response.json();
@@ -64,14 +64,14 @@ export default function EditClientPage() {
       });
     } catch (err) {
       console.error('Error fetching client:', err);
-      setError('Failed to load client details. Please try again later.');
+      setError('Failed to load client. Please try again later.');
       
-      // For demo purposes, set sample data
+      // For demo purposes
       setFormData({
         name: 'John Doe',
         email: 'john@example.com',
         phone: '555-123-4567',
-        notes: 'Client is interested in strength training and weight loss. Has previous knee injury.',
+        notes: 'Regular client since 2022',
       });
     } finally {
       setIsLoading(false);
@@ -92,30 +92,25 @@ export default function EditClientPage() {
     setError(null);
 
     try {
-      // Replace with your actual API endpoint
-      const response = await fetch(`http://localhost:8000/api/clients/${clientId}`, {
+      const response = await fetch(`http://localhost:8000/api/v1/clients/${clientId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${getJwtToken() || ''}`,
+          'X-API-Key': 'test_key_12345'
         },
         body: JSON.stringify(formData),
       });
-
+      
       if (!response.ok) {
         throw new Error('Failed to update client');
       }
-
-      // Redirect to client details on success
+      
+      // Redirect to client detail page on success
       router.push(`/clients/${clientId}`);
     } catch (err) {
       console.error('Error updating client:', err);
       setError('Failed to update client. Please try again.');
-      
-      // For demo purposes, simulate success and redirect
-      setTimeout(() => {
-        router.push(`/clients/${clientId}`);
-      }, 1000);
     } finally {
       setIsSaving(false);
     }

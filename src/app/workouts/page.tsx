@@ -8,16 +8,7 @@ import Button from '@/components/ui/Button';
 import Link from 'next/link';
 import { getJwtToken } from '@/lib/tokenHelper';
 import ImportWorkoutsModal from '@/components/ImportWorkoutsModal';
-
-interface Workout {
-  id: string;
-  client_name: string;
-  client_id: string;
-  date: string;
-  type: string;
-  duration: number;
-  notes?: string;
-}
+import { Workout, workoutsApi } from '@/lib/apiClient';
 
 export default function WorkoutsPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -25,8 +16,12 @@ export default function WorkoutsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  
+  // Development mode flag - set to true to use sample data and avoid API calls
+  const USE_SAMPLE_DATA = false; // Toggle this when backend is ready
 
   useEffect(() => {
+    // Only fetch workouts if user is authenticated
     if (user) {
       fetchWorkouts();
     }
@@ -36,23 +31,58 @@ export default function WorkoutsPage() {
     setIsLoading(true);
     setError(null);
     
-    try {
-      // Replace with your actual API endpoint
-      const response = await fetch('http://localhost:8000/api/workouts', {
-        headers: {
-          Authorization: `Bearer ${getJwtToken() || ''}`,
+    // If we're in development mode with sample data, skip the API call
+    if (USE_SAMPLE_DATA) {
+      console.log('Development mode: Using sample workout data');
+      setWorkouts([
+        {
+          id: '1',
+          client_name: 'John Doe',
+          client_id: '1',
+          date: new Date().toISOString(),
+          type: 'Strength Training',
+          duration: 60,
+          notes: 'Focused on upper body',
+          exercises: [],
+          created_at: new Date().toISOString(),
         },
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch workouts');
-      }
-      
-      const data = await response.json();
-      setWorkouts(data);
+        {
+          id: '2',
+          client_name: 'Jane Smith',
+          client_id: '2',
+          date: new Date(Date.now() - 86400000).toISOString(), // Yesterday
+          type: 'Cardio',
+          duration: 45,
+          notes: 'HIIT session',
+          exercises: [],
+          created_at: new Date(Date.now() - 86400000).toISOString(),
+        },
+        {
+          id: '3',
+          client_name: 'Alex Johnson',
+          client_id: '3',
+          date: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
+          type: 'Flexibility',
+          duration: 30,
+          notes: 'Yoga and stretching',
+          exercises: [],
+          created_at: new Date(Date.now() - 172800000).toISOString(),
+        },
+      ]);
+      setIsLoading(false);
+      return;
+    }
+    
+    try {
+      console.log('Attempting to fetch workouts from API...');
+      // Using the updated workouts API which already handles the response format
+      const workouts = await workoutsApi.getAll();
+      setWorkouts(workouts);
+      console.log('Successfully fetched workouts from API:', workouts);
     } catch (err) {
       console.error('Error fetching workouts:', err);
-      setError('Failed to load workouts. Please try again later.');
+      setError('Failed to load workouts from API. Using sample data instead.');
+      console.log('Using sample workout data for development');
       
       // For demo purposes, add some sample workouts
       setWorkouts([
@@ -63,7 +93,9 @@ export default function WorkoutsPage() {
           date: new Date().toISOString(),
           type: 'Strength Training',
           duration: 60,
-          notes: 'Focused on upper body. Increased weight on bench press.',
+          notes: 'Focused on upper body',
+          exercises: [],
+          created_at: new Date().toISOString(),
         },
         {
           id: '2',
@@ -72,7 +104,20 @@ export default function WorkoutsPage() {
           date: new Date(Date.now() - 86400000).toISOString(), // Yesterday
           type: 'Cardio',
           duration: 45,
-          notes: '5k run followed by stretching.',
+          notes: 'HIIT session',
+          exercises: [],
+          created_at: new Date(Date.now() - 86400000).toISOString(),
+        },
+        {
+          id: '3',
+          client_name: 'Alex Johnson',
+          client_id: '3',
+          date: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
+          type: 'Flexibility',
+          duration: 30,
+          notes: 'Yoga and stretching',
+          exercises: [],
+          created_at: new Date(Date.now() - 172800000).toISOString(),
         },
       ]);
     } finally {

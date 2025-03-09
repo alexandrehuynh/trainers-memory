@@ -24,6 +24,7 @@ Trainer's Memory API: An AI-powered fitness intelligence layer that gives any fi
 - Implemented Alembic for database migrations
 - Created repository pattern for data access
 - Resolved SQLAlchemy dependency conflicts and version compatibility issues
+- Database setup and initialization with Alembic migrations
 
 ## ✅ Implemented API Endpoints
 -----------------------------------------------------------------------------------
@@ -66,16 +67,18 @@ Trainer's Memory API: An AI-powered fitness intelligence layer that gives any fi
   - ✅ Set up Alembic for migrations
   - ✅ Resolve dependency conflicts between SQLAlchemy and databases package
 
-### 🔄 In Progress
 - **API Integration**
   - ✅ JWT token handling
   - ✅ Basic fetch calls with error handling
-  - 🔄 Create centralized API client
-  - 🔄 Improve error handling and loading states
+  - ✅ Create centralized API client
+  - ✅ Improve error handling and loading states
 
 - **Workout Tracking**
   - ✅ Workout listing view
   - ✅ Workout creation form
+
+### 🔄 In Progress
+- **Workout Tracking**
   - 🔄 Workout detail view
   - 🔄 Workout history visualization
 

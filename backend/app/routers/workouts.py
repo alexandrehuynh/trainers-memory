@@ -3,10 +3,17 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field
 from datetime import datetime
 import uuid
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import API key dependency and standard response
 from ..main import get_api_key
 from ..utils.response import StandardResponse
+from ..db import (
+    AsyncWorkoutRepository,
+    AsyncExerciseRepository,
+    AsyncClientRepository,
+    get_async_db
+)
 
 # Define models
 class ExerciseBase(BaseModel):
@@ -57,19 +64,6 @@ router = APIRouter(
     responses={404: {"description": "Not found"}},
 )
 
-# In-memory data store (replace with database in production)
-workouts_db = {}
-exercises_db = {}
-
-# Helper function to get client name
-def get_client_name(client_id: str) -> str:
-    # In a real implementation, you would fetch this from a database
-    # This is just a mock implementation for demo purposes
-    from .clients import clients_db
-    if client_id in clients_db:
-        return clients_db[client_id]["name"]
-    return "Unknown Client"
-
 # Helper function to validate date string
 def is_valid_date(date_string: str) -> bool:
     try:
@@ -85,7 +79,8 @@ async def get_workouts(
     skip: int = Query(0, ge=0, description="Number of workouts to skip"),
     limit: int = Query(100, ge=1, le=100, description="Maximum number of workouts to return"),
     client_id: Optional[str] = Query(None, description="Filter workouts by client ID"),
-    client_info: Dict[str, Any] = Depends(get_api_key)
+    client_info: Dict[str, Any] = Depends(get_api_key),
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
     Retrieve a list of workouts.
@@ -94,22 +89,60 @@ async def get_workouts(
     - **limit**: Maximum number of workouts to return (pagination)
     - **client_id**: Optional filter to show only workouts for a specific client
     """
-    # Filter workouts if client_id is provided
+    workout_repo = AsyncWorkoutRepository(db)
+    client_repo = AsyncClientRepository(db)
+    exercise_repo = AsyncExerciseRepository(db)
+    
+    # Get workouts (filtered by client_id if provided)
     if client_id:
-        filtered_workouts = [w for w in workouts_db.values() if w["client_id"] == client_id]
+        workouts_list = await workout_repo.get_by_client(
+            uuid.UUID(client_id), skip=skip, limit=limit
+        )
+        total_count = len(workouts_list)  # In a real implementation, you would get the total count from the database
     else:
-        filtered_workouts = list(workouts_db.values())
+        workouts_list = await workout_repo.get_all(skip=skip, limit=limit)
+        total_count = len(workouts_list)  # In a real implementation, you would get the total count from the database
+    
+    # Convert to API response format with client names
+    serialized_workouts = []
+    for workout in workouts_list:
+        # Get client name
+        client = await client_repo.get_by_id(workout.client_id)
+        client_name = client.name if client else "Unknown Client"
+        
+        # Get exercises for this workout
+        exercises = await exercise_repo.get_by_workout(workout.id)
+        serialized_exercises = []
+        for exercise in exercises:
+            serialized_exercises.append({
+                "id": str(exercise.id),
+                "name": exercise.name,
+                "sets": exercise.sets,
+                "reps": exercise.reps,
+                "weight": float(exercise.weight),
+                "notes": exercise.notes
+            })
+        
+        # Format workout data
+        serialized_workouts.append({
+            "id": str(workout.id),
+            "client_id": str(workout.client_id),
+            "client_name": client_name,
+            "date": workout.date.isoformat() if isinstance(workout.date, datetime) else workout.date,
+            "type": workout.type,
+            "duration": workout.duration,
+            "notes": workout.notes,
+            "exercises": serialized_exercises,
+            "created_at": workout.created_at.isoformat() if workout.created_at else None
+        })
     
     # Sort by date (newest first)
-    sorted_workouts = sorted(filtered_workouts, key=lambda x: x["date"], reverse=True)
-    
-    # Paginate
-    paginated_workouts = sorted_workouts[skip:skip+limit]
+    serialized_workouts.sort(key=lambda x: x["date"], reverse=True)
     
     return StandardResponse.success(
         data={
-            "workouts": paginated_workouts,
-            "total": len(filtered_workouts),
+            "workouts": serialized_workouts,
+            "total": total_count,
             "skip": skip,
             "limit": limit
         },
@@ -120,75 +153,135 @@ async def get_workouts(
 @router.get("/workouts/{workout_id}", response_model=Dict[str, Any])
 async def get_workout(
     workout_id: str = Path(..., description="The ID of the workout to retrieve"),
-    client_info: Dict[str, Any] = Depends(get_api_key)
+    client_info: Dict[str, Any] = Depends(get_api_key),
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
     Retrieve a specific workout by ID.
     
     - **workout_id**: The unique identifier of the workout
     """
-    if workout_id not in workouts_db:
+    workout_repo = AsyncWorkoutRepository(db)
+    client_repo = AsyncClientRepository(db)
+    exercise_repo = AsyncExerciseRepository(db)
+    
+    # Get workout
+    workout = await workout_repo.get_by_id(uuid.UUID(workout_id))
+    if not workout:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Workout with ID {workout_id} not found"
         )
     
+    # Get client name
+    client = await client_repo.get_by_id(workout.client_id)
+    client_name = client.name if client else "Unknown Client"
+    
+    # Get exercises for this workout
+    exercises = await exercise_repo.get_by_workout(workout.id)
+    serialized_exercises = []
+    for exercise in exercises:
+        serialized_exercises.append({
+            "id": str(exercise.id),
+            "name": exercise.name,
+            "sets": exercise.sets,
+            "reps": exercise.reps,
+            "weight": float(exercise.weight),
+            "notes": exercise.notes
+        })
+    
+    # Format workout data
+    workout_data = {
+        "id": str(workout.id),
+        "client_id": str(workout.client_id),
+        "client_name": client_name,
+        "date": workout.date.isoformat() if isinstance(workout.date, datetime) else workout.date,
+        "type": workout.type,
+        "duration": workout.duration,
+        "notes": workout.notes,
+        "exercises": serialized_exercises,
+        "created_at": workout.created_at.isoformat() if workout.created_at else None
+    }
+    
     return StandardResponse.success(
-        data=workouts_db[workout_id],
+        data=workout_data,
         message="Workout retrieved successfully"
     )
 
 # POST /workouts - Create a new workout
-@router.post("/workouts", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
+@router.post("/workouts", status_code=status.HTTP_201_CREATED, response_model=Dict[str, Any])
 async def create_workout(
     workout: WorkoutCreate,
-    client_info: Dict[str, Any] = Depends(get_api_key)
+    client_info: Dict[str, Any] = Depends(get_api_key),
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
     Create a new workout.
     
     - **workout**: Workout data to create
     """
+    workout_repo = AsyncWorkoutRepository(db)
+    client_repo = AsyncClientRepository(db)
+    exercise_repo = AsyncExerciseRepository(db)
+    
+    # Validate client exists
+    client = await client_repo.get_by_id(uuid.UUID(workout.client_id))
+    if not client:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Client with ID {workout.client_id} not found"
+        )
+    
     # Validate date format
     if not is_valid_date(workout.date):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid date format. Use YYYY-MM-DD format."
+            detail="Invalid date format. Use YYYY-MM-DD"
         )
     
-    # Generate a unique ID
-    workout_id = str(uuid.uuid4())
-    timestamp = datetime.now()
+    # Create workout
+    workout_data = workout.dict(exclude={"exercises"})
+    workout_data["date"] = datetime.fromisoformat(workout.date)
+    workout_data["created_at"] = datetime.utcnow()
+    workout_data["updated_at"] = datetime.utcnow()
+    
+    db_workout = await workout_repo.create(workout_data)
     
     # Create exercises
-    exercises = []
-    for exercise_data in workout.exercises:
-        exercise_id = str(uuid.uuid4())
-        exercise = Exercise(
-            id=exercise_id,
-            **exercise_data.model_dump()
-        )
-        exercises.append(exercise.model_dump())
-        exercises_db[exercise_id] = exercise.model_dump()
+    exercises_data = []
+    for exercise in workout.exercises:
+        exercise_data = exercise.dict()
+        exercise_data["workout_id"] = db_workout.id
+        exercise_data["created_at"] = datetime.utcnow()
+        exercise_data["updated_at"] = datetime.utcnow()
+        
+        db_exercise = await exercise_repo.create(exercise_data)
+        exercises_data.append({
+            "id": str(db_exercise.id),
+            "name": db_exercise.name,
+            "sets": db_exercise.sets,
+            "reps": db_exercise.reps,
+            "weight": float(db_exercise.weight),
+            "notes": db_exercise.notes
+        })
     
-    # Get client name
-    client_name = get_client_name(workout.client_id)
-    
-    # Create the workout record
-    new_workout = Workout(
-        id=workout_id,
-        client_name=client_name,
-        created_at=timestamp,
-        exercises=exercises,
-        **workout.model_dump(exclude={"exercises"})
-    )
-    
-    # Store in our mock database
-    workouts_db[workout_id] = new_workout.model_dump()
+    # Prepare response
+    response_data = {
+        "id": str(db_workout.id),
+        "client_id": str(db_workout.client_id),
+        "client_name": client.name,
+        "date": db_workout.date.isoformat(),
+        "type": db_workout.type,
+        "duration": db_workout.duration,
+        "notes": db_workout.notes,
+        "exercises": exercises_data,
+        "created_at": db_workout.created_at.isoformat() if db_workout.created_at else None
+    }
     
     return StandardResponse.success(
-        data=new_workout.model_dump(),
-        message="Workout created successfully"
+        data=response_data,
+        message="Workout created successfully",
+        status_code=status.HTTP_201_CREATED
     )
 
 # PUT /workouts/{workout_id} - Update a workout
@@ -196,7 +289,8 @@ async def create_workout(
 async def update_workout(
     workout_update: WorkoutUpdate,
     workout_id: str = Path(..., description="The ID of the workout to update"),
-    client_info: Dict[str, Any] = Depends(get_api_key)
+    client_info: Dict[str, Any] = Depends(get_api_key),
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
     Update an existing workout.
@@ -204,54 +298,100 @@ async def update_workout(
     - **workout_id**: The unique identifier of the workout to update
     - **workout_update**: Workout data to update
     """
-    if workout_id not in workouts_db:
+    workout_repo = AsyncWorkoutRepository(db)
+    client_repo = AsyncClientRepository(db)
+    exercise_repo = AsyncExerciseRepository(db)
+    
+    # Check if workout exists
+    workout = await workout_repo.get_by_id(uuid.UUID(workout_id))
+    if not workout:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Workout with ID {workout_id} not found"
         )
     
+    # Validate client if provided
+    if workout_update.client_id:
+        client = await client_repo.get_by_id(uuid.UUID(workout_update.client_id))
+        if not client:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Client with ID {workout_update.client_id} not found"
+            )
+    
     # Validate date format if provided
     if workout_update.date and not is_valid_date(workout_update.date):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid date format. Use YYYY-MM-DD format."
+            detail="Invalid date format. Use YYYY-MM-DD"
         )
     
-    # Get existing workout
-    existing_workout = workouts_db[workout_id]
+    # Update workout
+    update_data = {k: v for k, v in workout_update.dict(exclude={"exercises"}).items() if v is not None}
+    if "date" in update_data:
+        update_data["date"] = datetime.fromisoformat(update_data["date"])
+    update_data["updated_at"] = datetime.utcnow()
     
-    # Update fields that are provided
-    update_data = workout_update.model_dump(exclude_unset=True)
+    updated_workout = await workout_repo.update(uuid.UUID(workout_id), update_data)
     
-    # Handle exercises separately if provided
-    if "exercises" in update_data:
-        exercises = update_data.pop("exercises")
-        updated_exercises = []
+    # Update exercises if provided
+    if workout_update.exercises is not None:
+        # Delete existing exercises
+        existing_exercises = await exercise_repo.get_by_workout(workout.id)
+        for exercise in existing_exercises:
+            await exercise_repo.delete(exercise.id)
         
-        for exercise_data in exercises:
-            exercise_id = str(uuid.uuid4())
-            exercise = Exercise(
-                id=exercise_id,
-                **exercise_data
-            )
-            updated_exercises.append(exercise.model_dump())
-            exercises_db[exercise_id] = exercise.model_dump()
-        
-        existing_workout["exercises"] = updated_exercises
+        # Create new exercises
+        exercises_data = []
+        for exercise in workout_update.exercises:
+            exercise_data = exercise.dict()
+            exercise_data["workout_id"] = updated_workout.id
+            exercise_data["created_at"] = datetime.utcnow()
+            exercise_data["updated_at"] = datetime.utcnow()
+            
+            db_exercise = await exercise_repo.create(exercise_data)
+            exercises_data.append({
+                "id": str(db_exercise.id),
+                "name": db_exercise.name,
+                "sets": db_exercise.sets,
+                "reps": db_exercise.reps,
+                "weight": float(db_exercise.weight),
+                "notes": db_exercise.notes
+            })
+    else:
+        # Get existing exercises
+        existing_exercises = await exercise_repo.get_by_workout(workout.id)
+        exercises_data = []
+        for exercise in existing_exercises:
+            exercises_data.append({
+                "id": str(exercise.id),
+                "name": exercise.name,
+                "sets": exercise.sets,
+                "reps": exercise.reps,
+                "weight": float(exercise.weight),
+                "notes": exercise.notes
+            })
     
-    # Update client name if client_id is changed
-    if "client_id" in update_data:
-        existing_workout["client_name"] = get_client_name(update_data["client_id"])
+    # Get client name
+    client = await client_repo.get_by_id(updated_workout.client_id)
+    client_name = client.name if client else "Unknown Client"
     
-    # Update other fields
-    for field, value in update_data.items():
-        existing_workout[field] = value
-    
-    # Save the updated workout
-    workouts_db[workout_id] = existing_workout
+    # Prepare response
+    response_data = {
+        "id": str(updated_workout.id),
+        "client_id": str(updated_workout.client_id),
+        "client_name": client_name,
+        "date": updated_workout.date.isoformat() if isinstance(updated_workout.date, datetime) else updated_workout.date,
+        "type": updated_workout.type,
+        "duration": updated_workout.duration,
+        "notes": updated_workout.notes,
+        "exercises": exercises_data,
+        "created_at": updated_workout.created_at.isoformat() if updated_workout.created_at else None,
+        "updated_at": updated_workout.updated_at.isoformat() if updated_workout.updated_at else None
+    }
     
     return StandardResponse.success(
-        data=existing_workout,
+        data=response_data,
         message="Workout updated successfully"
     )
 
@@ -259,31 +399,34 @@ async def update_workout(
 @router.delete("/workouts/{workout_id}", response_model=Dict[str, Any])
 async def delete_workout(
     workout_id: str = Path(..., description="The ID of the workout to delete"),
-    client_info: Dict[str, Any] = Depends(get_api_key)
+    client_info: Dict[str, Any] = Depends(get_api_key),
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
     Delete a workout.
     
     - **workout_id**: The unique identifier of the workout to delete
     """
-    if workout_id not in workouts_db:
+    workout_repo = AsyncWorkoutRepository(db)
+    
+    # Check if workout exists
+    workout = await workout_repo.get_by_id(uuid.UUID(workout_id))
+    if not workout:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Workout with ID {workout_id} not found"
         )
     
-    # Get the workout to be deleted
-    workout = workouts_db[workout_id]
+    # Delete workout (associated exercises will be deleted via cascade)
+    success = await workout_repo.delete(uuid.UUID(workout_id))
     
-    # Remove the workout
-    deleted_workout = workouts_db.pop(workout_id)
-    
-    # Remove associated exercises
-    for exercise in workout["exercises"]:
-        if exercise["id"] in exercises_db:
-            exercises_db.pop(exercise["id"])
-    
-    return StandardResponse.success(
-        data={"id": workout_id},
-        message="Workout deleted successfully"
-    ) 
+    if success:
+        return StandardResponse.success(
+            data={"id": workout_id},
+            message="Workout deleted successfully"
+        )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error deleting workout"
+        ) 

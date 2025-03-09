@@ -3,10 +3,12 @@ from typing import List, Dict, Any, Optional
 from pydantic import BaseModel, Field, EmailStr
 from datetime import datetime
 import uuid
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import API key dependency and standard response
 from ..main import get_api_key
 from ..utils.response import StandardResponse
+from ..db import AsyncClientRepository, get_async_db
 
 # Define models
 class ClientBase(BaseModel):
@@ -34,15 +36,13 @@ class Client(ClientBase):
 # Create router
 router = APIRouter()
 
-# In-memory data store (replace with database in production)
-clients_db = {}
-
 # GET /clients - List all clients
 @router.get("/clients", response_model=Dict[str, Any])
 async def get_clients(
     skip: int = Query(0, ge=0, description="Number of clients to skip"),
     limit: int = Query(100, ge=1, le=100, description="Maximum number of clients to return"),
-    client_info: Dict[str, Any] = Depends(get_api_key)
+    client_info: Dict[str, Any] = Depends(get_api_key),
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
     Retrieve a list of clients.
@@ -50,13 +50,26 @@ async def get_clients(
     - **skip**: Number of clients to skip (pagination)
     - **limit**: Maximum number of clients to return (pagination)
     """
-    clients_list = list(clients_db.values())
-    paginated_clients = clients_list[skip:skip+limit]
+    client_repo = AsyncClientRepository(db)
+    clients_list = await client_repo.get_all(skip=skip, limit=limit)
+    
+    # Convert database models to Pydantic models for serialization
+    serialized_clients = []
+    for client in clients_list:
+        serialized_clients.append({
+            "id": str(client.id),
+            "name": client.name,
+            "email": client.email,
+            "phone": client.phone,
+            "notes": client.notes,
+            "created_at": client.created_at.isoformat() if client.created_at else None,
+            "updated_at": client.updated_at.isoformat() if client.updated_at else None
+        })
     
     return StandardResponse.success(
         data={
-            "clients": paginated_clients,
-            "total": len(clients_db),
+            "clients": serialized_clients,
+            "total": len(serialized_clients),  # In a real implementation, you would get the total count from the database
             "skip": skip,
             "limit": limit
         },
@@ -67,52 +80,79 @@ async def get_clients(
 @router.get("/clients/{client_id}", response_model=Dict[str, Any])
 async def get_client(
     client_id: str = Path(..., description="The ID of the client to retrieve"),
-    client_info: Dict[str, Any] = Depends(get_api_key)
+    client_info: Dict[str, Any] = Depends(get_api_key),
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
     Retrieve a specific client by ID.
     
     - **client_id**: The unique identifier of the client
     """
-    if client_id not in clients_db:
+    client_repo = AsyncClientRepository(db)
+    client = await client_repo.get_by_id(uuid.UUID(client_id))
+    
+    if not client:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Client with ID {client_id} not found"
         )
     
+    # Convert database model to dict for serialization
+    client_data = {
+        "id": str(client.id),
+        "name": client.name,
+        "email": client.email,
+        "phone": client.phone,
+        "notes": client.notes,
+        "created_at": client.created_at.isoformat() if client.created_at else None,
+        "updated_at": client.updated_at.isoformat() if client.updated_at else None
+    }
+    
     return StandardResponse.success(
-        data=clients_db[client_id],
+        data=client_data,
         message="Client retrieved successfully"
     )
 
 # POST /clients - Create a new client
-@router.post("/clients", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
+@router.post("/clients", status_code=status.HTTP_201_CREATED, response_model=Dict[str, Any])
 async def create_client(
     client: ClientCreate,
-    client_info: Dict[str, Any] = Depends(get_api_key)
+    client_info: Dict[str, Any] = Depends(get_api_key),
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
     Create a new client.
     
     - **client**: Client data to create
     """
-    # Generate a unique ID
-    client_id = str(uuid.uuid4())
-    timestamp = datetime.now()
+    client_repo = AsyncClientRepository(db)
     
-    # Create the client record
-    new_client = Client(
-        id=client_id,
-        created_at=timestamp,
-        **client.model_dump()
-    )
+    # Check if client with this email already exists
+    existing_client = await client_repo.get_by_email(client.email)
+    if existing_client:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Client with email {client.email} already exists"
+        )
     
-    # Store in our mock database
-    clients_db[client_id] = new_client.model_dump()
+    # Create client
+    client_data = client.dict()
+    client_data["created_at"] = datetime.utcnow()
+    client_data["updated_at"] = datetime.utcnow()
+    
+    db_client = await client_repo.create(client_data)
     
     return StandardResponse.success(
-        data=new_client.model_dump(),
-        message="Client created successfully"
+        data={
+            "id": str(db_client.id),
+            "name": db_client.name,
+            "email": db_client.email,
+            "phone": db_client.phone,
+            "notes": db_client.notes,
+            "created_at": db_client.created_at.isoformat() if db_client.created_at else None
+        },
+        message="Client created successfully",
+        status_code=status.HTTP_201_CREATED
     )
 
 # PUT /clients/{client_id} - Update a client
@@ -120,7 +160,8 @@ async def create_client(
 async def update_client(
     client_update: ClientUpdate,
     client_id: str = Path(..., description="The ID of the client to update"),
-    client_info: Dict[str, Any] = Depends(get_api_key)
+    client_info: Dict[str, Any] = Depends(get_api_key),
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
     Update an existing client.
@@ -128,28 +169,32 @@ async def update_client(
     - **client_id**: The unique identifier of the client to update
     - **client_update**: Client data to update
     """
-    if client_id not in clients_db:
+    client_repo = AsyncClientRepository(db)
+    
+    # Check if client exists
+    client = await client_repo.get_by_id(uuid.UUID(client_id))
+    if not client:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Client with ID {client_id} not found"
         )
     
-    # Get existing client
-    existing_client = clients_db[client_id]
+    # Update client
+    update_data = {k: v for k, v in client_update.dict().items() if v is not None}
+    update_data["updated_at"] = datetime.utcnow()
     
-    # Update fields that are provided
-    update_data = client_update.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        existing_client[field] = value
-    
-    # Update the timestamp
-    existing_client["updated_at"] = datetime.now()
-    
-    # Save the updated client
-    clients_db[client_id] = existing_client
+    updated_client = await client_repo.update(uuid.UUID(client_id), update_data)
     
     return StandardResponse.success(
-        data=existing_client,
+        data={
+            "id": str(updated_client.id),
+            "name": updated_client.name,
+            "email": updated_client.email,
+            "phone": updated_client.phone,
+            "notes": updated_client.notes,
+            "created_at": updated_client.created_at.isoformat() if updated_client.created_at else None,
+            "updated_at": updated_client.updated_at.isoformat() if updated_client.updated_at else None
+        },
         message="Client updated successfully"
     )
 
@@ -157,23 +202,34 @@ async def update_client(
 @router.delete("/clients/{client_id}", response_model=Dict[str, Any])
 async def delete_client(
     client_id: str = Path(..., description="The ID of the client to delete"),
-    client_info: Dict[str, Any] = Depends(get_api_key)
+    client_info: Dict[str, Any] = Depends(get_api_key),
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
     Delete a client.
     
     - **client_id**: The unique identifier of the client to delete
     """
-    if client_id not in clients_db:
+    client_repo = AsyncClientRepository(db)
+    
+    # Check if client exists
+    client = await client_repo.get_by_id(uuid.UUID(client_id))
+    if not client:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Client with ID {client_id} not found"
         )
     
-    # Remove the client
-    deleted_client = clients_db.pop(client_id)
+    # Delete client
+    success = await client_repo.delete(uuid.UUID(client_id))
     
-    return StandardResponse.success(
-        data={"id": client_id},
-        message="Client deleted successfully"
-    )
+    if success:
+        return StandardResponse.success(
+            data={"id": client_id},
+            message="Client deleted successfully"
+        )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error deleting client"
+        )

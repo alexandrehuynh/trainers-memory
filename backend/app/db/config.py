@@ -18,33 +18,55 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Database URLs (sync and async)
-DATABASE_URL = os.getenv(
-    "DATABASE_URL", 
-    "postgresql://postgres:postgres@localhost:5432/trainers_memory"
-)
-ASYNC_DATABASE_URL = DATABASE_URL.replace('postgresql://', 'postgresql+asyncpg://')
+# Check if we're in development mode and should use SQLite
+USE_SQLITE = os.getenv("USE_SQLITE", "False").lower() in ("true", "1", "t")
+
+if USE_SQLITE:
+    # SQLite configuration (for development)
+    DATABASE_URL = "sqlite:///./test.db"
+    ASYNC_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
+else:
+    # PostgreSQL configuration (for production)
+    DATABASE_URL = os.getenv(
+        "DATABASE_URL", 
+        "postgresql://alexhuynh:@localhost:5432/trainers_memory"
+    )
+    ASYNC_DATABASE_URL = DATABASE_URL.replace('postgresql://', 'postgresql+asyncpg://')
 
 # Create database engines
-engine = create_engine(
-    DATABASE_URL,
-    pool_size=5,
-    max_overflow=10,
-    pool_recycle=3600,
-    pool_pre_ping=True,
-)
-async_engine = create_async_engine(
-    ASYNC_DATABASE_URL,
-    echo=False,
-    future=True,
-    pool_size=5,
-    max_overflow=10,
-    pool_recycle=3600,
-    pool_pre_ping=True,
-)
+if USE_SQLITE:
+    # SQLite doesn't support some PostgreSQL-specific arguments
+    engine = create_engine(
+        DATABASE_URL,
+        connect_args={"check_same_thread": False}
+    )
+    async_engine = create_async_engine(
+        ASYNC_DATABASE_URL,
+        echo=False,
+        future=True,
+    )
+else:
+    # PostgreSQL configuration
+    engine = create_engine(
+        DATABASE_URL,
+        pool_size=5,
+        max_overflow=10,
+        pool_recycle=3600,
+        pool_pre_ping=True,
+    )
+    async_engine = create_async_engine(
+        ASYNC_DATABASE_URL,
+        echo=False,
+        future=True,
+        pool_size=5,
+        max_overflow=10,
+        pool_recycle=3600,
+        pool_pre_ping=True,
+    )
 
 # Create session factories
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Use sessionmaker with AsyncSession class for SQLAlchemy 1.4.x
 AsyncSessionLocal = sessionmaker(
     class_=AsyncSession,
     autocommit=False,
@@ -81,6 +103,7 @@ def get_db() -> Generator[Session, None, None]:
 
 async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
     """Get an asynchronous database session."""
+    # Updated async session handling for SQLAlchemy 1.4.x
     session = AsyncSessionLocal()
     try:
         yield session

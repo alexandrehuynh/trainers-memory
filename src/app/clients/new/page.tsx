@@ -43,12 +43,12 @@ export default function NewClientPage() {
     setError(null);
 
     try {
-      // Replace with your actual API endpoint
-      const response = await fetch('http://localhost:8000/api/clients', {
+      const response = await fetch('http://localhost:8000/api/v1/clients', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${getJwtToken() || ''}`,
+          'X-API-Key': 'test_key_12345'
         },
         body: JSON.stringify(formData),
       });

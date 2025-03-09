@@ -8,14 +8,7 @@ import Button from '@/components/ui/Button';
 import Link from 'next/link';
 import { getJwtToken } from '@/lib/tokenHelper';
 import ImportClientsModal from '@/components/ImportClientsModal';
-
-interface Client {
-  id: string;
-  name: string;
-  email: string;
-  phone?: string;
-  created_at: string;
-}
+import { Client, clientsApi } from '@/lib/apiClient';
 
 export default function ClientsPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -23,6 +16,9 @@ export default function ClientsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  
+  // Development mode flag - set to true to use sample data and avoid API calls
+  const USE_SAMPLE_DATA = false; // Toggle this when backend is ready
 
   useEffect(() => {
     // Only fetch clients if user is authenticated
@@ -35,23 +31,46 @@ export default function ClientsPage() {
     setIsLoading(true);
     setError(null);
     
-    try {
-      // Replace with your actual API endpoint
-      const response = await fetch('http://localhost:8000/api/clients', {
-        headers: {
-          Authorization: `Bearer ${getJwtToken() || ''}`,
+    // If we're in development mode with sample data, skip the API call
+    if (USE_SAMPLE_DATA) {
+      console.log('Development mode: Using sample client data');
+      setClients([
+        {
+          id: '1',
+          name: 'John Doe',
+          email: 'john@example.com',
+          phone: '555-123-4567',
+          created_at: new Date().toISOString(),
         },
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch clients');
-      }
-      
-      const data = await response.json();
-      setClients(data);
+        {
+          id: '2',
+          name: 'Jane Smith',
+          email: 'jane@example.com',
+          phone: '555-987-6543',
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: '3',
+          name: 'Alex Johnson',
+          email: 'alex@example.com',
+          phone: '555-456-7890',
+          created_at: new Date().toISOString(),
+        },
+      ]);
+      setIsLoading(false);
+      return;
+    }
+    
+    try {
+      console.log('Attempting to fetch clients from API...');
+      // Using the updated client API which already handles the response format
+      const clients = await clientsApi.getAll();
+      setClients(clients);
+      console.log('Successfully fetched clients from API:', clients);
     } catch (err) {
       console.error('Error fetching clients:', err);
-      setError('Failed to load clients. Please try again later.');
+      setError('Failed to load clients from API. Using sample data instead.');
+      console.log('Using sample client data for development');
       // For demo purposes, add some sample clients
       setClients([
         {
@@ -66,6 +85,13 @@ export default function ClientsPage() {
           name: 'Jane Smith',
           email: 'jane@example.com',
           phone: '555-987-6543',
+          created_at: new Date().toISOString(),
+        },
+        {
+          id: '3',
+          name: 'Alex Johnson',
+          email: 'alex@example.com',
+          phone: '555-456-7890',
           created_at: new Date().toISOString(),
         },
       ]);

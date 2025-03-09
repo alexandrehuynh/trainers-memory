@@ -3,24 +3,118 @@
 :root {
   --background: #ffffff;
   --foreground: #171717;
-}
-
-@theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
+/* Theme variables for both modes */
+.light-theme {
+  --background: #ffffff;
+  --foreground: #171717;
+  --card-bg: #ffffff;
+  --card-border: #e5e7eb;
+  --text-primary: #171717;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
+  --link: #3b82f6;
+  --link-hover: #2563eb;
+  --button-primary-bg: #3b82f6;
+  --button-primary-text: #ffffff;
+  --button-secondary-bg: #f3f4f6;
+  --button-secondary-text: #374151;
+  --button-outline-border: #d1d5db;
+  --button-outline-text: #374151;
+  --button-outline-hover: #f3f4f6;
+  --button-danger-bg: #ef4444;
+  --button-danger-text: #ffffff;
+}
+
+.dark-theme {
+  --background: #0f172a; /* Darker blue background instead of pure black */
+  --foreground: #f8fafc;
+  --card-bg: #1e293b;
+  --card-border: #334155;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --link: #60a5fa;
+  --link-hover: #93c5fd;
+  --button-primary-bg: #3b82f6;
+  --button-primary-text: #ffffff;
+  --button-secondary-bg: #334155;
+  --button-secondary-text: #e2e8f0;
+  --button-outline-border: #475569;
+  --button-outline-text: #e2e8f0;
+  --button-outline-hover: #334155;
+  --button-danger-bg: #ef4444;
+  --button-danger-text: #ffffff;
+}
+
+/* We're commenting out the auto dark mode for now - we'll add a toggle instead
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
   }
 }
+*/
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Override for card styling based on theme */
+.card {
+  background-color: var(--card-bg);
+  border-color: var(--card-border);
+}
+
+.card h2, .card h3 {
+  color: var(--text-primary);
+}
+
+.card p {
+  color: var(--text-secondary);
+}
+
+/* Button styles */
+.button-primary {
+  background-color: var(--button-primary-bg);
+  color: var(--button-primary-text);
+}
+
+.button-primary:hover {
+  background-color: var(--link-hover);
+}
+
+.button-secondary {
+  background-color: var(--button-secondary-bg);
+  color: var(--button-secondary-text);
+}
+
+.button-secondary:hover {
+  filter: brightness(0.95);
+}
+
+.button-outline {
+  background-color: transparent;
+  border: 1px solid var(--button-outline-border);
+  color: var(--button-outline-text);
+}
+
+.button-outline:hover {
+  background-color: var(--button-outline-hover);
+}
+
+.button-danger {
+  background-color: var(--button-danger-bg);
+  color: var(--button-danger-text);
+}
+
+.button-danger:hover {
+  filter: brightness(0.9);
 }

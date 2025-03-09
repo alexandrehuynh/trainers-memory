@@ -58,8 +58,12 @@ export default function EditWorkoutPage() {
         duration: data.duration,
         notes: data.notes || '',
         exercises: data.exercises.map(exercise => ({
-          ...exercise,
-          id: exercise.id || crypto.randomUUID(),
+          id: exercise.id,
+          name: exercise.name,
+          sets: exercise.sets,
+          reps: exercise.reps,
+          weight: exercise.weight,
+          notes: exercise.notes || '',
         })),
       });
     } catch (err) {
