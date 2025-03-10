@@ -9,7 +9,10 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 }
 
 const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, fullWidth = true, className = '', ...props }, ref) => {
+  ({ label, error, fullWidth = true, className = '', value, ...props }, ref) => {
+    // Ensure value is always a string (or empty string) if it's provided but undefined/null
+    const safeValue = value === undefined || value === null ? '' : value;
+    
     return (
       <div className={`${fullWidth ? 'w-full' : ''} mb-4`}>
         {label && (
@@ -22,6 +25,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
         )}
         <input
           ref={ref}
+          value={safeValue}
           className={`px-3 py-2 bg-white border rounded-md shadow-sm placeholder-gray-400
             focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
             disabled:opacity-50 disabled:bg-gray-100

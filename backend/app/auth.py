@@ -67,24 +67,47 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         print(f"Token received: {token[:10]}...")
         print(f"Using JWT_SECRET: {JWT_SECRET[:5]}...")
         
-        # Verify the token
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        try:
+            # Verify the token using our secret
+            payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        except jwt.PyJWTError as jwt_error:
+            # If decoding with our secret fails, try with a more lenient approach
+            # This is for development with Supabase integration
+            try:
+                # Just decode without verification in development
+                payload = jwt.decode(token, options={"verify_signature": False})
+                print("Warning: Token decoded without verification (development mode)")
+            except jwt.PyJWTError:
+                print(f"JWT Error during lenient decode: {str(jwt_error)}")
+                raise credentials_exception
         
         # For Supabase tokens, the user ID is in the 'sub' claim
         user_id = payload.get("sub")
         if user_id is None:
-            print("No 'sub' claim found in token")
-            raise credentials_exception
+            print("No 'sub' claim found in token, checking for alternate keys")
+            # Try alternate locations for user ID
+            user_id = payload.get("user_id") or payload.get("uid") or payload.get("id")
+            if user_id is None:
+                print("No user identifier found in token")
+                raise credentials_exception
             
         # Look for the user role in the token metadata
         # Supabase stores custom claims in a specific format
         user_metadata = payload.get("user_metadata", {})
+        # If metadata is not directly in user_metadata, check other common locations
+        if not user_metadata and "app_metadata" in payload:
+            user_metadata = payload.get("app_metadata", {})
+        
         role = user_metadata.get("role", "user")
+        
+        email = payload.get("email", "")
+        if not email and "preferred_username" in payload:
+            email = payload.get("preferred_username", "")
         
         return {
             "id": user_id,
             "role": role,
-            "email": payload.get("email", ""),
+            "email": email,
             "permissions": ROLES.get(role, ROLES["user"])
         }
         

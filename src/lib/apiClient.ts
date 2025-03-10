@@ -77,10 +77,12 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   // Function to handle the actual fetch with retries
   const fetchWithRetry = async (retries: number): Promise<T> => {
     try {
+      console.log(`API Request: ${options.method || 'GET'} ${endpoint}`);
       const response = await fetch(url, config);
       
       // Handle 401 Unauthorized (token expired)
       if (response.status === 401) {
+        console.log('401 Unauthorized - Token may have expired. Attempting refresh...');
         const refreshResult = await refreshTokenAndRetry();
         if (refreshResult) {
           return refreshResult;
@@ -88,8 +90,20 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
       }
       
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || `API error: ${response.status}`);
+        const errorText = await response.text();
+        let errorDetail = 'Unknown error';
+        
+        try {
+          // Try to parse as JSON
+          const errorData = JSON.parse(errorText);
+          errorDetail = errorData.detail || errorData.message || errorData.error || JSON.stringify(errorData);
+        } catch (e) {
+          // If not JSON, use the text directly
+          errorDetail = errorText || `HTTP status ${response.status}`;
+        }
+        
+        console.error(`API Error (${response.status}): ${endpoint}`, errorDetail);
+        throw new Error(`API error: ${response.status} - ${errorDetail}`);
       }
       
       // For 204 No Content responses
@@ -98,7 +112,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
       }
       
       const responseData = await response.json() as ApiResponse<T>;
-      console.log('API Response:', endpoint, responseData.status);
+      console.log(`API Success: ${endpoint}`, responseData.status);
       
       // Check if the API response indicates success
       if (responseData.status === 'success') {
@@ -115,15 +129,18 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
         
         return processedData as T;
       } else {
+        console.error(`API returned error status: ${responseData.message}`);
         throw new Error(responseData.message || 'API returned an error');
       }
     } catch (error: any) {
+      console.error(`API Error for ${endpoint}:`, error.message);
+      
       if (retries > 0 && !error.message?.includes('401')) {
         console.log(`Retrying API request (${retries} retries left): ${endpoint}`);
         await new Promise(resolve => setTimeout(resolve, retryDelay));
         return fetchWithRetry(retries - 1);
       }
-      console.error(`API request failed: ${endpoint}`, error);
+      
       throw error;
     }
   };
