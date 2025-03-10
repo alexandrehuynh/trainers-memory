@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/authContext';
-import Navigation from '@/components/Navigation';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
@@ -153,172 +152,163 @@ export default function ClientDetailPage() {
 
   if (!user) {
     return (
-      <div className="min-h-screen flex flex-col">
-        <Navigation />
-        <main className="flex-grow flex items-center justify-center">
-          <Card>
-            <div className="text-center p-6">
-              <h2 className="text-xl font-semibold text-gray-800 mb-4">
-                Please sign in to view client details
-              </h2>
-              <Link href="/signin">
-                <Button variant="primary">Sign In</Button>
-              </Link>
-            </div>
-          </Card>
-        </main>
-      </div>
+      <Card>
+        <div className="text-center p-6">
+          <h2 className="text-xl font-semibold text-gray-800 mb-4">
+            Please sign in to view client details
+          </h2>
+          <Link href="/signin">
+            <Button variant="primary">Sign In</Button>
+          </Link>
+        </div>
+      </Card>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <Navigation />
-      
-      <main className="flex-grow container mx-auto px-4 py-8">
-        <div className="max-w-3xl mx-auto">
-          <div className="flex items-center mb-6">
-            <Link href="/clients" className="text-blue-600 hover:text-blue-800 mr-2">
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                className="h-5 w-5"
-                viewBox="0 0 20 20"
-                fill="currentColor"
-              >
-                <path
-                  fillRule="evenodd"
-                  d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </Link>
-            <h1 className="text-2xl font-bold text-gray-900">Client Details</h1>
+    <>
+      <div className="max-w-3xl mx-auto">
+        <div className="flex items-center mb-6">
+          <Link href="/clients" className="text-blue-600 hover:text-blue-800 mr-2">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </Link>
+          <h1 className="text-2xl font-bold text-gray-900">Client Details</h1>
+        </div>
+
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 text-red-800 rounded-md">
+            {error}
           </div>
+        )}
 
-          {error && (
-            <div className="mb-6 p-4 bg-red-50 text-red-800 rounded-md">
-              {error}
-            </div>
-          )}
-
-          {isLoading ? (
-            <div className="flex justify-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-            </div>
-          ) : client ? (
-            <>
-              <Card className="mb-6">
-                <div className="flex justify-between items-start mb-6">
-                  <h2 className="text-xl font-semibold text-gray-900">{client.name}</h2>
-                  <div className="flex space-x-2">
-                    <Link href={`/clients/${clientId}/edit`}>
-                      <Button variant="outline" size="sm">
-                        Edit
-                      </Button>
-                    </Link>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => setShowDeleteConfirm(true)}
-                    >
-                      Delete
+        {isLoading ? (
+          <div className="flex justify-center py-12">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+          </div>
+        ) : client ? (
+          <>
+            <Card className="mb-6">
+              <div className="flex justify-between items-start mb-6">
+                <h2 className="text-xl font-semibold text-gray-900">{client.name}</h2>
+                <div className="flex space-x-2">
+                  <Link href={`/clients/${clientId}/edit`}>
+                    <Button variant="outline" size="sm">
+                      Edit
                     </Button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500">Email</h3>
-                    <p className="mt-1">{client.email}</p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500">Phone</h3>
-                    <p className="mt-1">{client.phone || 'Not provided'}</p>
-                  </div>
-                  <div className="md:col-span-2">
-                    <h3 className="text-sm font-medium text-gray-500">Notes</h3>
-                    <p className="mt-1 whitespace-pre-line">
-                      {client.notes || 'No notes available'}
-                    </p>
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-medium text-gray-500">Client since</h3>
-                    <p className="mt-1">
-                      {new Date(client.created_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
-              </Card>
-
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-xl font-semibold text-gray-900">Workouts</h2>
-                <Link href={`/workouts/new?clientId=${clientId}`}>
-                  <Button variant="primary" size="sm">
-                    Add Workout
+                  </Link>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => setShowDeleteConfirm(true)}
+                  >
+                    Delete
                   </Button>
-                </Link>
+                </div>
               </div>
 
-              {workoutsLoading ? (
-                <div className="flex justify-center py-8">
-                  <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500">Email</h3>
+                  <p className="mt-1">{client.email}</p>
                 </div>
-              ) : workouts.length === 0 ? (
-                <Card>
-                  <div className="text-center py-8">
-                    <p className="text-gray-500 mb-4">No workouts recorded yet</p>
-                    <Link href={`/workouts/new?clientId=${clientId}`}>
-                      <Button variant="primary">Record First Workout</Button>
-                    </Link>
-                  </div>
-                </Card>
-              ) : (
-                <div className="space-y-4">
-                  {workouts.map((workout) => (
-                    <Link key={workout.id} href={`/workouts/${workout.id}`}>
-                      <Card className="hover:shadow-md transition-shadow">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <h3 className="font-medium text-gray-900">{workout.type}</h3>
-                            <p className="text-sm text-gray-500">
-                              {new Date(workout.date).toLocaleDateString()}
-                            </p>
-                          </div>
-                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                            {workout.duration} min
-                          </span>
-                        </div>
-                        {workout.notes && (
-                          <p className="mt-2 text-sm text-gray-600 line-clamp-2">{workout.notes}</p>
-                        )}
-                      </Card>
-                    </Link>
-                  ))}
-                  <div className="text-center pt-4">
-                    <Link href={`/clients/${clientId}/workouts`}>
-                      <Button variant="outline">View All Workouts</Button>
-                    </Link>
-                  </div>
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500">Phone</h3>
+                  <p className="mt-1">{client.phone || 'Not provided'}</p>
                 </div>
-              )}
-            </>
-          ) : (
-            <Card>
-              <div className="text-center py-8">
-                <h3 className="text-lg font-medium text-gray-900 mb-2">
-                  Client not found
-                </h3>
-                <p className="text-gray-500 mb-6">
-                  The client you're looking for doesn't exist or has been deleted
-                </p>
-                <Link href="/clients">
-                  <Button variant="primary">Back to Clients</Button>
-                </Link>
+                <div className="md:col-span-2">
+                  <h3 className="text-sm font-medium text-gray-500">Notes</h3>
+                  <p className="mt-1 whitespace-pre-line">
+                    {client.notes || 'No notes available'}
+                  </p>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-gray-500">Client since</h3>
+                  <p className="mt-1">
+                    {new Date(client.created_at).toLocaleDateString()}
+                  </p>
+                </div>
               </div>
             </Card>
-          )}
-        </div>
-      </main>
+
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-semibold text-gray-900">Workouts</h2>
+              <Link href={`/workouts/new?clientId=${clientId}`}>
+                <Button variant="primary" size="sm">
+                  Add Workout
+                </Button>
+              </Link>
+            </div>
+
+            {workoutsLoading ? (
+              <div className="flex justify-center py-8">
+                <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-500"></div>
+              </div>
+            ) : workouts.length === 0 ? (
+              <Card>
+                <div className="text-center py-8">
+                  <p className="text-gray-500 mb-4">No workouts recorded yet</p>
+                  <Link href={`/workouts/new?clientId=${clientId}`}>
+                    <Button variant="primary">Record First Workout</Button>
+                  </Link>
+                </div>
+              </Card>
+            ) : (
+              <div className="space-y-4">
+                {workouts.map((workout) => (
+                  <Link key={workout.id} href={`/workouts/${workout.id}`}>
+                    <Card className="hover:shadow-md transition-shadow">
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <h3 className="font-medium text-gray-900">{workout.type}</h3>
+                          <p className="text-sm text-gray-500">
+                            {new Date(workout.date).toLocaleDateString()}
+                          </p>
+                        </div>
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                          {workout.duration} min
+                        </span>
+                      </div>
+                      {workout.notes && (
+                        <p className="mt-2 text-sm text-gray-600 line-clamp-2">{workout.notes}</p>
+                      )}
+                    </Card>
+                  </Link>
+                ))}
+                <div className="text-center pt-4">
+                  <Link href={`/clients/${clientId}/workouts`}>
+                    <Button variant="outline">View All Workouts</Button>
+                  </Link>
+                </div>
+              </div>
+            )}
+          </>
+        ) : (
+          <Card>
+            <div className="text-center py-8">
+              <h3 className="text-lg font-medium text-gray-900 mb-2">
+                Client not found
+              </h3>
+              <p className="text-gray-500 mb-6">
+                The client you're looking for doesn't exist or has been deleted
+              </p>
+              <Link href="/clients">
+                <Button variant="primary">Back to Clients</Button>
+              </Link>
+            </div>
+          </Card>
+        )}
+      </div>
 
       {/* Delete confirmation modal */}
       {showDeleteConfirm && (
@@ -349,6 +339,6 @@ export default function ClientDetailPage() {
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 } 
