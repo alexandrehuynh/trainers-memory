@@ -13,6 +13,9 @@ from app.utils.response import StandardResponse, API_VERSION
 from app.db import connect_to_db, disconnect_from_db, AsyncAPIKeyRepository, get_async_db
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# Import authentication utilities
+from app.auth import get_current_user, refresh_token, verify_user_role, verify_permission
+
 # API title and description
 API_TITLE = "Trainer's Memory API"
 API_DESCRIPTION = """
@@ -141,6 +144,30 @@ async def health_check():
 async def get_my_info(client_info: Dict[str, Any] = Depends(get_api_key)):
     """Return the client information associated with the API key."""
     return StandardResponse.success(client_info)
+
+# Add token refresh endpoint
+@app.post(f"/api/{API_VERSION}/auth/refresh", tags=["Authentication"])
+async def refresh_jwt_token(request: Request):
+    """Refresh an expired JWT token using a valid refresh token.
+    
+    The refresh token must be provided in the Refresh-Token header.
+    """
+    try:
+        result = await refresh_token(request)
+        return StandardResponse.success(result)
+    except HTTPException as e:
+        return StandardResponse.error(e.detail, e.status_code)
+
+# Add user role information endpoint
+@app.get(f"/api/{API_VERSION}/auth/user", tags=["Authentication"])
+async def get_user_info(current_user: dict = Depends(get_current_user)):
+    """Get the current user's information and permissions."""
+    return StandardResponse.success({
+        "user_id": current_user.get("id"),
+        "email": current_user.get("email"),
+        "role": current_user.get("role"),
+        "permissions": current_user.get("permissions", [])
+    })
 
 # Test endpoint without authentication
 @app.get("/api/v1/test-auth", tags=["Authentication"])
