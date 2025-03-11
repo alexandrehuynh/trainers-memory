@@ -8,6 +8,8 @@ import Button from '@/components/ui/Button';
 import Link from 'next/link';
 import { getJwtToken } from '@/lib/tokenHelper';
 import ImportWorkoutsModal from '@/components/ImportWorkoutsModal';
+import ExportWorkoutsModal from '@/components/ExportWorkoutsModal';
+import ScanWorkoutModal from '@/components/ScanWorkoutModal';
 import { Workout, workoutsApi } from '@/lib/apiClient';
 
 export default function WorkoutsPage() {
@@ -17,6 +19,8 @@ export default function WorkoutsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [showScanModal, setShowScanModal] = useState(false);
   
   // Development mode flag - set to true to use sample data and avoid API calls
   const USE_SAMPLE_DATA = false; // Toggle this when backend is ready
@@ -134,6 +138,14 @@ export default function WorkoutsPage() {
     fetchWorkouts();
   };
 
+  const handleScanSuccess = (count: number) => {
+    setShowScanModal(false);
+    // Show success message
+    alert(`Successfully imported ${count} workouts from scanned document`);
+    // Refresh the workout list
+    fetchWorkouts();
+  };
+
   if (authLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -162,6 +174,18 @@ export default function WorkoutsPage() {
       <div className="flex justify-between items-center mb-6">
         <h1 className={`text-2xl font-bold ${theme === 'light' ? 'text-gray-900' : 'text-gray-100'}`}>Workouts</h1>
         <div className="flex space-x-2">
+          <Button 
+            variant="outline"
+            onClick={() => setShowScanModal(true)}
+          >
+            Scan Document
+          </Button>
+          <Button 
+            variant="outline"
+            onClick={() => setShowExportModal(true)}
+          >
+            Export Workouts
+          </Button>
           <Button 
             variant="outline"
             onClick={() => setShowImportModal(true)}
@@ -261,6 +285,21 @@ export default function WorkoutsPage() {
           isOpen={showImportModal}
           onClose={() => setShowImportModal(false)}
           onSuccess={handleImportSuccess}
+        />
+      )}
+
+      {showExportModal && (
+        <ExportWorkoutsModal
+          isOpen={showExportModal}
+          onClose={() => setShowExportModal(false)}
+        />
+      )}
+
+      {showScanModal && (
+        <ScanWorkoutModal
+          isOpen={showScanModal}
+          onClose={() => setShowScanModal(false)}
+          onSuccess={handleScanSuccess}
         />
       )}
     </div>

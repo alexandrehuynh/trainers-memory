@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Button from './ui/Button';
 import { Client, clientsApi, workoutsApi } from '@/lib/apiClient';
+import * as XLSX from 'xlsx';
 
 interface ImportWorkout {
   client_id: string;
@@ -11,6 +12,14 @@ interface ImportWorkout {
   type: string;
   duration: number;
   notes: string;
+  exercises: Array<{
+    id: string;
+    name: string;
+    sets: number;
+    reps: number;
+    weight: number;
+    notes: string;
+  }>;
 }
 
 interface ImportWorkoutsModalProps {
@@ -71,6 +80,31 @@ export default function ImportWorkoutsModal({ isOpen, onClose, onSuccess }: Impo
     setError(null);
   };
 
+  const parseExercises = (rowData: any): Array<{ id: string; name: string; sets: number; reps: number; weight: number; notes: string; }> => {
+    const exercises = [];
+    let exerciseIndex = 1;
+    
+    // Look for exercise columns in pattern: exercise1_name, exercise1_sets, etc.
+    while (rowData[`exercise${exerciseIndex}_name`]) {
+      const exerciseName = rowData[`exercise${exerciseIndex}_name`];
+      
+      if (exerciseName && exerciseName.trim() !== '') {
+        exercises.push({
+          id: crypto.randomUUID(),
+          name: exerciseName,
+          sets: parseInt(rowData[`exercise${exerciseIndex}_sets`]) || 0,
+          reps: parseInt(rowData[`exercise${exerciseIndex}_reps`]) || 0,
+          weight: parseInt(rowData[`exercise${exerciseIndex}_weight`]) || 0,
+          notes: rowData[`exercise${exerciseIndex}_notes`] || '',
+        });
+      }
+      
+      exerciseIndex++;
+    }
+    
+    return exercises;
+  };
+
   const parseFile = async () => {
     if (!file) {
       setError('Please select a file to import');
@@ -121,6 +155,7 @@ export default function ImportWorkoutsModal({ isOpen, onClose, onSuccess }: Impo
                 type: rowData.type,
                 duration: parseInt(rowData.duration) || 0,
                 notes: rowData.notes || '',
+                exercises: parseExercises(rowData),
               });
             }
           }
@@ -131,34 +166,114 @@ export default function ImportWorkoutsModal({ isOpen, onClose, onSuccess }: Impo
       } 
       // For Excel files
       else if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
-        // We'd normally use a library like xlsx or sheetjs
-        // For this example, we'll simulate successful parsing
+        const reader = new FileReader();
+
+        reader.onload = async (e) => {
+          try {
+            const data = new Uint8Array(e.target?.result as ArrayBuffer);
+            const workbook = XLSX.read(data, { type: 'array' });
+            
+            // Assume data is in the first sheet
+            const firstSheetName = workbook.SheetNames[0];
+            const worksheet = workbook.Sheets[firstSheetName];
+            
+            // Convert sheet to JSON
+            const json = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+            
+            if (json.length < 2) {
+              throw new Error('File seems to be empty or has no data rows');
+            }
+            
+            // First row should be headers
+            const headers = json[0] as string[];
+            
+            // Validate headers
+            const requiredHeaders = ['client_email', 'date', 'type', 'duration'];
+            const missingHeaders = requiredHeaders.filter(h => !headers.includes(h));
+            
+            if (missingHeaders.length > 0) {
+              throw new Error(`Missing required columns: ${missingHeaders.join(', ')}`);
+            }
+            
+            const parsedData: ImportWorkout[] = [];
+            
+            // Process each row (starting from row 1, as row 0 is headers)
+            for (let i = 1; i < json.length; i++) {
+              const row = json[i] as any[];
+              
+              if (!row || row.length === 0) continue;
+              
+              const rowData: any = {};
+              
+              // Map each column to its header
+              headers.forEach((header, index) => {
+                if (row[index] !== undefined) {
+                  rowData[header] = row[index];
+                }
+              });
+              
+              // Ensure required data is present
+              if (rowData.client_email && rowData.date && rowData.type && rowData.duration) {
+                // Find client by email
+                const client = clients.find(c => c.email === rowData.client_email);
+                
+                if (client) {
+                  // Parse date - Excel dates might be formatted differently
+                  let workoutDate: string;
+                  
+                  try {
+                    // Try to parse Excel serial date if needed
+                    if (typeof rowData.date === 'number') {
+                      // Convert Excel date serial to JavaScript Date
+                      const excelDate = XLSX.SSF.parse_date_code(rowData.date);
+                      const jsDate = new Date(
+                        excelDate.y, 
+                        excelDate.m - 1, 
+                        excelDate.d
+                      );
+                      workoutDate = jsDate.toISOString().split('T')[0];
+                    } else {
+                      // Regular string date
+                      workoutDate = new Date(rowData.date).toISOString().split('T')[0];
+                    }
+                  } catch (err) {
+                    console.error('Error parsing date:', err);
+                    workoutDate = new Date().toISOString().split('T')[0]; // Default to today
+                  }
+                  
+                  parsedData.push({
+                    client_id: client.id,
+                    client_name: client.name,
+                    date: workoutDate,
+                    type: rowData.type,
+                    duration: parseInt(rowData.duration) || 0,
+                    notes: rowData.notes || '',
+                    exercises: parseExercises(rowData),
+                  });
+                }
+              }
+            }
+            
+            setPreview(parsedData);
+            setStep('preview');
+            setIsLoading(false);
+          } catch (err) {
+            console.error('Error parsing Excel file:', err);
+            setError(`Error parsing Excel file: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            setIsLoading(false);
+          }
+        };
         
-        // Mock data for preview
-        setPreview([
-          {
-            client_id: '1',
-            client_name: 'John Doe',
-            date: new Date().toISOString().split('T')[0],
-            type: 'Strength Training',
-            duration: 60,
-            notes: 'Upper body focus',
-          },
-          {
-            client_id: '2',
-            client_name: 'Jane Smith',
-            date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-            type: 'Cardio',
-            duration: 45,
-            notes: '5k run',
-          },
-        ]);
-        setStep('preview');
+        reader.onerror = () => {
+          setError('Error reading file');
+          setIsLoading(false);
+        };
+        
+        reader.readAsArrayBuffer(file);
       }
     } catch (err) {
       console.error('Error parsing file:', err);
       setError(`Error parsing file: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -178,14 +293,11 @@ export default function ImportWorkoutsModal({ isOpen, onClose, onSuccess }: Impo
       
       for (const workout of preview) {
         try {
-          // Create workout with empty exercises array
-          await workoutsApi.create({
-            ...workout,
-            exercises: [],
-          });
+          // Create workout with exercises array from parsing
+          await workoutsApi.create(workout);
           successCount++;
         } catch (err) {
-          console.error(`Error importing workout for ${workout.client_name}:`, err);
+          console.error(`Error importing workout:`, err);
           // Continue with other workouts even if one fails
         }
       }
@@ -203,6 +315,49 @@ export default function ImportWorkoutsModal({ isOpen, onClose, onSuccess }: Impo
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const generateExcelTemplate = () => {
+    // Create a new workbook
+    const workbook = XLSX.utils.book_new();
+    
+    // Sample data with headers and one example row
+    const data = [
+      [
+        'client_email', 'date', 'type', 'duration', 'notes',
+        'exercise1_name', 'exercise1_sets', 'exercise1_reps', 'exercise1_weight', 'exercise1_notes',
+        'exercise2_name', 'exercise2_sets', 'exercise2_reps', 'exercise2_weight', 'exercise2_notes'
+      ],
+      [
+        'client@example.com', new Date().toISOString().split('T')[0], 'Strength Training', 60, 'Sample workout notes',
+        'Bench Press', 3, 10, 135, 'Good form',
+        'Squats', 4, 8, 185, ''
+      ]
+    ];
+    
+    // Create a worksheet
+    const worksheet = XLSX.utils.aoa_to_sheet(data);
+    
+    // Add the worksheet to the workbook
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Workouts');
+    
+    // Generate Excel file buffer
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    
+    // Convert to Blob and create download link
+    const blob = new Blob([excelBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = URL.createObjectURL(blob);
+    
+    // Create a temporary link and trigger download
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'workout_import_template.xlsx';
+    document.body.appendChild(link);
+    link.click();
+    
+    // Clean up
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   if (!isOpen) {
@@ -238,6 +393,18 @@ export default function ImportWorkoutsModal({ isOpen, onClose, onSuccess }: Impo
                 <li>notes (optional)</li>
               </ul>
               
+              <div className="mb-4">
+                <button
+                  onClick={generateExcelTemplate}
+                  className="text-blue-600 hover:text-blue-800 hover:underline text-sm mb-2 flex items-center"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Download Excel Template
+                </button>
+              </div>
+              
               <div className="mb-6">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Select File
@@ -263,43 +430,31 @@ export default function ImportWorkoutsModal({ isOpen, onClose, onSuccess }: Impo
           
           {step === 'preview' && (
             <div>
-              <p className="text-gray-600 mb-4">
-                Review the workouts that will be imported. Make sure the data looks correct before proceeding.
+              <p className="text-gray-600 mb-6">
+                Review the workouts to be imported below. Click "Import" to add these workouts to your account.
               </p>
               
               {preview.length > 0 ? (
-                <div className="mb-6 border border-gray-200 rounded-md overflow-hidden">
+                <div className="border border-gray-200 rounded-md overflow-hidden mb-6">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
                       <tr>
-                        <th
-                          scope="col"
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                        >
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Client
                         </th>
-                        <th
-                          scope="col"
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                        >
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Date
                         </th>
-                        <th
-                          scope="col"
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                        >
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Type
                         </th>
-                        <th
-                          scope="col"
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                        >
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Duration
                         </th>
-                        <th
-                          scope="col"
-                          className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                        >
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Exercises
+                        </th>
+                        <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Notes
                         </th>
                       </tr>
@@ -318,6 +473,23 @@ export default function ImportWorkoutsModal({ isOpen, onClose, onSuccess }: Impo
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {workout.duration} min
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {workout.exercises.length > 0 ? (
+                              <div>
+                                <span className="font-medium">{workout.exercises.length}</span> exercise{workout.exercises.length !== 1 ? 's' : ''}
+                                <div className="text-xs text-gray-400 mt-1">
+                                  {workout.exercises.slice(0, 2).map((ex, i) => (
+                                    <div key={i}>{ex.name}</div>
+                                  ))}
+                                  {workout.exercises.length > 2 && (
+                                    <div>+{workout.exercises.length - 2} more</div>
+                                  )}
+                                </div>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">None</span>
+                            )}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {workout.notes || '-'}

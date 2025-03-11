@@ -7,6 +7,9 @@ import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
 import { Workout, workoutsApi } from '@/lib/apiClient';
+import WorkoutHistory from '@/components/WorkoutHistory';
+import ExerciseProgression from '@/components/ExerciseProgression';
+import WorkoutTemplates from '@/components/WorkoutTemplates';
 
 export default function WorkoutDetailPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -19,6 +22,9 @@ export default function WorkoutDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -93,6 +99,11 @@ export default function WorkoutDetailPage() {
     }
   };
 
+  const handleTemplateSelect = (template: any) => {
+    // Navigate to new workout page with template
+    router.push(`/workouts/new?template=${template.id}`);
+  };
+
   if (authLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -136,6 +147,12 @@ export default function WorkoutDetailPage() {
         <h1 className="text-2xl font-bold text-gray-900">Workout Details</h1>
         
         <div className="ml-auto space-x-2">
+          <Button
+            variant="outline"
+            onClick={() => setShowTemplates(!showTemplates)}
+          >
+            {showTemplates ? 'Hide Templates' : 'Save as Template'}
+          </Button>
           <Link href={`/workouts/${workoutId}/edit`}>
             <Button variant="outline">Edit Workout</Button>
           </Link>
@@ -151,6 +168,15 @@ export default function WorkoutDetailPage() {
       {error && (
         <div className="mb-6 p-4 bg-red-50 text-red-800 rounded-md">
           {error}
+        </div>
+      )}
+
+      {showTemplates && workout && (
+        <div className="mb-6">
+          <WorkoutTemplates 
+            onSelectTemplate={handleTemplateSelect} 
+            currentWorkout={workout}
+          />
         </div>
       )}
 
@@ -225,6 +251,12 @@ export default function WorkoutDetailPage() {
                         >
                           Weight
                         </th>
+                        <th
+                          scope="col"
+                          className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider"
+                        >
+                          Progress
+                        </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
@@ -249,6 +281,14 @@ export default function WorkoutDetailPage() {
                           <td className="px-6 py-4 whitespace-nowrap text-gray-500">
                             {exercise.weight} lbs
                           </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-center">
+                            <button
+                              onClick={() => setSelectedExercise(exercise.name === selectedExercise ? null : exercise.name)}
+                              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                            >
+                              {exercise.name === selectedExercise ? 'Hide Progress' : 'View Progress'}
+                            </button>
+                          </td>
                         </tr>
                       ))}
                     </tbody>
@@ -256,51 +296,97 @@ export default function WorkoutDetailPage() {
                 </div>
               )}
             </div>
+
+            <div className="mt-6 flex flex-wrap justify-center gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowHistory(!showHistory);
+                  setSelectedExercise(null);
+                }}
+              >
+                {showHistory ? 'Hide History' : 'Show Workout History'}
+              </Button>
+              
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setSelectedExercise(null);
+                  setShowHistory(false);
+                  setShowTemplates(!showTemplates);
+                }}
+              >
+                {showTemplates ? 'Hide Templates' : 'Workout Templates'}
+              </Button>
+            </div>
           </Card>
+
+          {showDeleteConfirm && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+              <Card className="max-w-md mx-auto">
+                <div className="p-6">
+                  <h3 className="text-lg font-medium text-gray-900 mb-4">Confirm Deletion</h3>
+                  <p className="text-gray-500 mb-6">
+                    Are you sure you want to delete this workout? This action cannot be undone.
+                  </p>
+                  <div className="flex justify-end space-x-3">
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowDeleteConfirm(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      variant="danger"
+                      onClick={handleDelete}
+                      disabled={isDeleting}
+                    >
+                      {isDeleting ? 'Deleting...' : 'Delete'}
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            </div>
+          )}
+
+          {selectedExercise && (
+            <div className="mt-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Exercise Progress: {selectedExercise}</h2>
+              <ExerciseProgression 
+                clientId={workout.client_id}
+                exerciseName={selectedExercise}
+                limit={10}
+              />
+            </div>
+          )}
+
+          {showHistory && (
+            <div className="mt-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Workout History</h2>
+              
+              {/* Show workout history for this client */}
+              <WorkoutHistory 
+                clientId={workout.client_id} 
+                limit={10}
+                showFilters={true}
+              />
+
+              <div className="mt-6 bg-blue-50 border border-blue-200 rounded-md p-4">
+                <h3 className="text-md font-medium text-blue-800 mb-2">Progress Insights</h3>
+                <p className="text-sm text-blue-700">
+                  Track your client's progress over time by comparing exercise weights, reps, and sets across multiple workouts.
+                  Select a specific exercise from the dropdown above to see detailed progression charts.
+                </p>
+              </div>
+            </div>
+          )}
         </>
       ) : (
         <Card>
-          <div className="text-center py-8">
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              Workout not found
-            </h3>
-            <p className="text-gray-500 mb-6">
-              The workout you're looking for doesn't exist or has been deleted
-            </p>
-            <Link href="/workouts">
-              <Button variant="primary">Back to Workouts</Button>
-            </Link>
+          <div className="p-6 text-center text-gray-500">
+            Workout not found
           </div>
         </Card>
-      )}
-
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-lg max-w-md w-full p-6">
-            <h3 className="text-lg font-medium text-gray-900 mb-4">
-              Delete Workout
-            </h3>
-            <p className="text-gray-500 mb-6">
-              Are you sure you want to delete this workout? This action cannot be undone.
-            </p>
-            <div className="flex justify-end space-x-3">
-              <Button
-                variant="outline"
-                onClick={() => setShowDeleteConfirm(false)}
-                disabled={isDeleting}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="danger"
-                onClick={handleDelete}
-                isLoading={isDeleting}
-              >
-                Delete
-              </Button>
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );

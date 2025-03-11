@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { getJwtToken } from '@/lib/tokenHelper';
 import { Client, clientsApi } from '@/lib/apiClient';
 import { workoutsApi } from '@/lib/apiClient';
+import WorkoutTemplates from '@/components/WorkoutTemplates';
 
 interface WorkoutFormData {
   client_id: string;
@@ -28,6 +29,14 @@ interface Exercise {
   reps: number;
   weight: number;
   notes: string;
+}
+
+interface WorkoutTemplate {
+  id: string;
+  name: string;
+  type: string;
+  exercises: Exercise[];
+  createdAt: Date;
 }
 
 export default function NewWorkoutPage() {
@@ -57,6 +66,7 @@ export default function NewWorkoutPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showTemplates, setShowTemplates] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -124,6 +134,16 @@ export default function NewWorkoutPage() {
       ...prev,
       exercises: prev.exercises.filter((exercise) => exercise.id !== id),
     }));
+  };
+
+  const handleTemplateSelect = (template: WorkoutTemplate) => {
+    setFormData((prev) => ({
+      ...prev,
+      type: template.type,
+      exercises: template.exercises,
+    }));
+    
+    setShowTemplates(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -204,11 +224,26 @@ export default function NewWorkoutPage() {
           </svg>
         </Link>
         <h1 className="text-2xl font-bold text-gray-900">Create New Workout</h1>
+        
+        <div className="ml-auto">
+          <Button
+            variant="outline"
+            onClick={() => setShowTemplates(!showTemplates)}
+          >
+            {showTemplates ? 'Hide Templates' : 'Use Template'}
+          </Button>
+        </div>
       </div>
 
       {error && (
         <div className="mb-6 p-4 bg-red-50 text-red-800 rounded-md">
           {error}
+        </div>
+      )}
+
+      {showTemplates && (
+        <div className="mb-6">
+          <WorkoutTemplates onSelectTemplate={handleTemplateSelect} />
         </div>
       )}
 
@@ -257,15 +292,29 @@ export default function NewWorkoutPage() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <Input
-                  label="Workout Type"
-                  id="type"
-                  name="type"
-                  value={formData.type}
-                  onChange={handleChange}
-                  required
-                  placeholder="e.g., Strength, Cardio, HIIT"
-                />
+                <div>
+                  <label
+                    htmlFor="type"
+                    className="block text-sm font-medium text-gray-700 mb-1"
+                  >
+                    Workout Type
+                  </label>
+                  <select
+                    id="type"
+                    name="type"
+                    value={formData.type}
+                    onChange={handleChange}
+                    required
+                    className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  >
+                    <option value="Strength">Strength</option>
+                    <option value="Cardio">Cardio</option>
+                    <option value="Flexibility">Flexibility</option>
+                    <option value="HIIT">HIIT</option>
+                    <option value="Recovery">Recovery</option>
+                    <option value="Custom">Custom</option>
+                  </select>
+                </div>
 
                 <Input
                   label="Duration (minutes)"
@@ -273,15 +322,10 @@ export default function NewWorkoutPage() {
                   id="duration"
                   name="duration"
                   value={formData.duration.toString()}
-                  onChange={(e) => {
-                    const value = parseInt(e.target.value) || 0;
-                    setFormData((prev) => ({
-                      ...prev,
-                      duration: value
-                    }));
-                  }}
+                  onChange={handleChange}
                   required
                   min="1"
+                  max="300"
                 />
               </div>
 
@@ -290,162 +334,182 @@ export default function NewWorkoutPage() {
                   htmlFor="notes"
                   className="block text-sm font-medium text-gray-700 mb-1"
                 >
-                  Workout Notes
+                  Notes
                 </label>
                 <textarea
                   id="notes"
                   name="notes"
                   rows={3}
-                  value={formData.notes}
+                  value={formData.notes || ''}
                   onChange={handleChange}
-                  placeholder="Overall notes about the workout"
-                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                ></textarea>
+                  className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Enter any additional notes about this workout"
+                />
               </div>
 
               <div>
-                <div className="flex justify-between items-center mb-4">
+                <div className="flex justify-between items-center mb-3">
                   <h3 className="text-lg font-medium text-gray-900">Exercises</h3>
                   <Button
                     type="button"
                     variant="outline"
-                    size="sm"
                     onClick={addExercise}
                   >
                     Add Exercise
                   </Button>
                 </div>
 
-                {formData.exercises.map((exercise, index) => (
-                  <div
-                    key={exercise.id}
-                    className="border border-gray-200 rounded-md p-4 mb-4"
-                  >
-                    <div className="flex justify-between items-center mb-3">
-                      <h4 className="font-medium text-gray-700">
-                        Exercise {index + 1}
-                      </h4>
-                      {formData.exercises.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => removeExercise(exercise.id)}
-                          className="text-red-600 hover:text-red-800"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
-                      <Input
-                        label="Exercise Name"
-                        id={`exercise-${exercise.id}-name`}
-                        value={exercise.name}
-                        onChange={(e) =>
-                          handleExerciseChange(exercise.id, 'name', e.target.value)
-                        }
-                        required
-                        placeholder="e.g., Bench Press, Squat"
-                      />
-
-                      <div className="grid grid-cols-3 gap-2">
-                        <Input
-                          label="Sets"
-                          type="number"
-                          id={`exercise-${exercise.id}-sets`}
-                          value={exercise.sets.toString()}
-                          onChange={(e) =>
-                            handleExerciseChange(
-                              exercise.id,
-                              'sets',
-                              parseInt(e.target.value) || 0
-                            )
-                          }
-                          required
-                          min="1"
-                        />
-                        <Input
-                          label="Reps"
-                          type="number"
-                          id={`exercise-${exercise.id}-reps`}
-                          value={exercise.reps.toString()}
-                          onChange={(e) =>
-                            handleExerciseChange(
-                              exercise.id,
-                              'reps',
-                              parseInt(e.target.value) || 0
-                            )
-                          }
-                          required
-                          min="0"
-                        />
-                        <Input
-                          label="Weight (lbs)"
-                          type="number"
-                          id={`exercise-${exercise.id}-weight`}
-                          value={exercise.weight.toString()}
-                          onChange={(e) =>
-                            handleExerciseChange(
-                              exercise.id,
-                              'weight',
-                              parseInt(e.target.value) || 0
-                            )
-                          }
-                          min="0"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label
-                        htmlFor={`exercise-${exercise.id}-notes`}
-                        className="block text-sm font-medium text-gray-700 mb-1"
-                      >
-                        Notes
-                      </label>
-                      <textarea
-                        id={`exercise-${exercise.id}-notes`}
-                        value={exercise.notes}
-                        onChange={(e) =>
-                          handleExerciseChange(exercise.id, 'notes', e.target.value)
-                        }
-                        rows={2}
-                        placeholder="Notes about this exercise"
-                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                      ></textarea>
-                    </div>
+                {formData.exercises.length === 0 ? (
+                  <div className="text-center py-6 bg-gray-50 rounded-md">
+                    <p className="text-gray-500">No exercises added yet</p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mt-2"
+                      onClick={addExercise}
+                    >
+                      Add Your First Exercise
+                    </Button>
                   </div>
-                ))}
+                ) : (
+                  <div className="space-y-4">
+                    {formData.exercises.map((exercise, index) => (
+                      <div
+                        key={exercise.id}
+                        className="border border-gray-200 rounded-md p-4"
+                      >
+                        <div className="flex justify-between items-start mb-3">
+                          <h4 className="text-md font-medium text-gray-900">
+                            Exercise {index + 1}
+                          </h4>
+                          <Button
+                            type="button"
+                            variant="danger"
+                            onClick={() => removeExercise(exercise.id)}
+                            className="px-2 py-1 text-sm"
+                          >
+                            Remove
+                          </Button>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-3">
+                          <Input
+                            label="Exercise Name"
+                            type="text"
+                            value={exercise.name}
+                            onChange={(e) =>
+                              handleExerciseChange(
+                                exercise.id,
+                                'name',
+                                e.target.value
+                              )
+                            }
+                            placeholder="e.g. Bench Press"
+                            required
+                          />
+
+                          <div className="grid grid-cols-3 gap-2">
+                            <Input
+                              label="Sets"
+                              type="number"
+                              value={exercise.sets.toString()}
+                              onChange={(e) =>
+                                handleExerciseChange(
+                                  exercise.id,
+                                  'sets',
+                                  parseInt(e.target.value)
+                                )
+                              }
+                              required
+                              min="1"
+                              max="100"
+                            />
+                            <Input
+                              label="Reps"
+                              type="number"
+                              value={exercise.reps.toString()}
+                              onChange={(e) =>
+                                handleExerciseChange(
+                                  exercise.id,
+                                  'reps',
+                                  parseInt(e.target.value)
+                                )
+                              }
+                              required
+                              min="1"
+                              max="1000"
+                            />
+                            <Input
+                              label="Weight (lbs)"
+                              type="number"
+                              value={exercise.weight.toString()}
+                              onChange={(e) =>
+                                handleExerciseChange(
+                                  exercise.id,
+                                  'weight',
+                                  parseInt(e.target.value)
+                                )
+                              }
+                              required
+                              min="0"
+                              max="2000"
+                            />
+                          </div>
+                        </div>
+
+                        <div>
+                          <label
+                            htmlFor={`exercise-notes-${exercise.id}`}
+                            className="block text-sm font-medium text-gray-700 mb-1"
+                          >
+                            Notes (optional)
+                          </label>
+                          <textarea
+                            id={`exercise-notes-${exercise.id}`}
+                            value={exercise.notes || ''}
+                            onChange={(e) =>
+                              handleExerciseChange(
+                                exercise.id,
+                                'notes',
+                                e.target.value
+                              )
+                            }
+                            className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            rows={2}
+                            placeholder="Add any notes about this exercise"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div className="flex justify-end space-x-3">
-                <Link href="/workouts">
-                  <Button variant="outline" type="button">
-                    Cancel
-                  </Button>
-                </Link>
+              <div className="flex justify-end">
                 <Button
-                  variant="primary"
                   type="submit"
-                  isLoading={isSaving}
+                  variant="primary"
+                  disabled={isSaving}
                 >
-                  Save Workout
+                  {isSaving ? 'Creating...' : 'Create Workout'}
                 </Button>
               </div>
             </div>
           </form>
         </Card>
       ) : (
-        <Card className="text-center p-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">
-            You need to add clients first
-          </h2>
-          <p className="text-gray-600 mb-6">
-            Before creating workouts, you need to add at least one client.
-          </p>
-          <Link href="/clients/new">
-            <Button variant="primary">Add New Client</Button>
-          </Link>
+        <Card>
+          <div className="text-center py-8">
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              No clients found
+            </h3>
+            <p className="text-gray-500 mb-6">
+              You need to add clients before you can create workouts
+            </p>
+            <Link href="/clients/new">
+              <Button variant="primary">Add Your First Client</Button>
+            </Link>
+          </div>
         </Card>
       )}
     </div>

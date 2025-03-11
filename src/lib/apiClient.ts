@@ -338,4 +338,77 @@ export const workoutsApi = {
   update: (id: string, data: Partial<Omit<Workout, 'id' | 'created_at' | 'updated_at'>>, options: RequestOptions = {}) => 
     apiClient.put<Workout>(`/workouts/${id}`, data, options),
   delete: (id: string, options: RequestOptions = {}) => apiClient.delete<void>(`/workouts/${id}`, options),
+};
+
+// Add OCR API interface and methods to the apiClient
+
+// OCR related interfaces
+export interface OCRResult {
+  client_id?: string;
+  workout_records: {
+    date: string;
+    type: string;
+    duration: number;
+    notes: string;
+    exercises: Array<{
+      name: string;
+      sets: number;
+      reps: number;
+      weight: number;
+      notes: string;
+    }>;
+  }[];
+  ocr_text: string;
+  original_image_url?: string;
+}
+
+// Add OCR API object
+export const ocrApi = {
+  /**
+   * Process an image containing workout notes using OCR
+   */
+  processImage: async (
+    imageFile: File,
+    clientId?: string
+  ): Promise<OCRResult> => {
+    const formData = new FormData();
+    formData.append('image', imageFile);
+    
+    if (clientId) {
+      formData.append('client_id', clientId);
+    }
+
+    const response = await request<OCRResult>(
+      '/transformation/ocr/process',
+      {
+        method: 'POST',
+        body: formData,
+        headers: {
+          // Don't set Content-Type here - the browser will set it with the correct boundary for FormData
+        },
+        cache: false,
+      }
+    );
+
+    return response;
+  },
+
+  /**
+   * Convert OCR results to workout data and save to database
+   */
+  saveOCRResults: async (
+    clientId: string,
+    workoutRecords: OCRResult['workout_records']
+  ): Promise<{ success: boolean; count: number }> => {
+    const response = await request<{ success: boolean; count: number }>(
+      '/transformation/ocr/save',
+      {
+        method: 'POST',
+        body: { client_id: clientId, workout_records: workoutRecords },
+        cache: false,
+      }
+    );
+
+    return response;
+  },
 }; 
