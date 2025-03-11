@@ -6,7 +6,7 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import API key dependency and standard response
-from ..main import get_api_key
+from ..auth_utils import get_api_key
 from ..utils.response import StandardResponse
 from ..db import (
     AsyncWorkoutRepository,

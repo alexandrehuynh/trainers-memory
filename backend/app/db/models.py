@@ -16,9 +16,9 @@ class Client(Base):
     """Client model representing fitness clients/users."""
     __tablename__ = "clients"
     __table_args__ = (
-        {"schema": "public"},
         Index('ix_clients_email', 'email'),
-        Index('ix_clients_name', 'name')
+        Index('ix_clients_name', 'name'),
+        {"schema": "public"}
     )
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -40,9 +40,9 @@ class Workout(Base):
     """Workout model representing a client's workout session."""
     __tablename__ = "workouts"
     __table_args__ = (
-        {"schema": "public"},
         Index('ix_workouts_client_id', 'client_id'),
-        Index('ix_workouts_date', 'date')
+        Index('ix_workouts_date', 'date'),
+        {"schema": "public"}
     )
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -65,8 +65,8 @@ class Exercise(Base):
     """Exercise model representing an exercise within a workout."""
     __tablename__ = "exercises"
     __table_args__ = (
-        {"schema": "public"},
-        Index('ix_exercises_workout_id', 'workout_id')
+        Index('ix_exercises_workout_id', 'workout_id'),
+        {"schema": "public"}
     )
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -89,9 +89,9 @@ class APIKey(Base):
     """API Key model for tracking API keys and their owners."""
     __tablename__ = "api_keys"
     __table_args__ = (
-        {"schema": "public"},
         Index('ix_api_keys_key', 'key'),
-        Index('ix_api_keys_client_id', 'client_id')
+        Index('ix_api_keys_client_id', 'client_id'),
+        {"schema": "public"}
     )
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

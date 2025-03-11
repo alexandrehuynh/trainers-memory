@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.responses import JSONResponse
 
 # Import API key dependency and standard response
-from ..main import get_api_key
+from ..auth_utils import get_api_key
 from ..utils.response import StandardResponse
 from ..db import AsyncClientRepository, get_async_db
 

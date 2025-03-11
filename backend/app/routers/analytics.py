@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
 from datetime import datetime, date
-from ..main import get_api_key
+from ..auth_utils import get_api_key
 from ..utils.response import StandardResponse
 
 # Create router

@@ -5,7 +5,7 @@ import os
 import uuid
 from datetime import datetime
 from ..ocr import OCRProcessor
-from ..main import get_api_key
+from ..auth_utils import get_api_key
 from ..utils.response import StandardResponse
 
 router = APIRouter(
