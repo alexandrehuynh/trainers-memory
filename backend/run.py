@@ -19,4 +19,4 @@ if __name__ == "__main__":
     )
     
     print(f"API server running on http://localhost:{port}")
-    print(f"API documentation: http://localhost:{port}/api/v1/docs") 
+    print(f"API documentation: http://localhost:{port}/docs") 

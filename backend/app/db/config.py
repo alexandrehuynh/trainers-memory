@@ -16,25 +16,37 @@ from contextlib import contextmanager
 from databases import Database
 from dotenv import load_dotenv
 from functools import lru_cache
+import getpass
 
 load_dotenv()
 
 # Check if we're in development mode and should use SQLite
 USE_SQLITE = os.getenv("USE_SQLITE", "False").lower() in ("true", "1", "t")
+print(f"USE_SQLITE configuration: {USE_SQLITE}")
 
-if USE_SQLITE:
-    # SQLite configuration (for development)
-    DATABASE_URL = "sqlite:///./test.db"
-    ASYNC_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
-else:
-    # PostgreSQL configuration (for production)
-    DB_HOST = os.getenv("DB_HOST", "localhost")
-    DB_PORT = os.getenv("DB_PORT", "5432")
-    DB_NAME = os.getenv("DB_NAME", "trainers_memory")
-    DB_USER = os.getenv("DB_USER", "postgres")
-    DB_PASS = os.getenv("DB_PASS", "postgres")
-    DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
-    ASYNC_DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+# Set up SQLite and PostgreSQL connection strings
+# SQLite configuration (for development)
+SQLITE_URL = "sqlite:///./test.db"
+ASYNC_SQLITE_URL = "sqlite+aiosqlite:///./test.db"
+
+# PostgreSQL configuration (for production)
+DB_HOST = os.getenv("DB_HOST", "localhost")
+DB_PORT = os.getenv("DB_PORT", "5432")
+DB_NAME = os.getenv("DB_NAME", "trainers_memory")
+# Use your system username as the default instead of 'postgres'
+current_user = getpass.getuser()
+DB_USER = os.getenv("DB_USER", current_user)
+DB_PASS = os.getenv("DB_PASS", "")  # Empty password as default
+PG_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+ASYNC_PG_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+# Print for debugging
+if not USE_SQLITE:
+    print(f"Attempting PostgreSQL connection: {DB_USER}:******@{DB_HOST}:{DB_PORT}/{DB_NAME}")
+    
+# Choose the correct URLs based on USE_SQLITE
+DATABASE_URL = SQLITE_URL if USE_SQLITE else PG_URL
+ASYNC_DATABASE_URL = ASYNC_SQLITE_URL if USE_SQLITE else ASYNC_PG_URL
 
 # Create database engines
 if USE_SQLITE:
@@ -109,11 +121,52 @@ def database():
 
 async def connect_to_db():
     """Connect to database on app startup."""
-    await database()["async_engine"].connect()
-    print("Connected to database")
+    global USE_SQLITE, DATABASE_URL, ASYNC_DATABASE_URL, engine, async_engine
+    
+    print("Connecting to database...")
+    
+    if not USE_SQLITE:
+        try:
+            # Try PostgreSQL connection first
+            print("Attempting PostgreSQL connection")
+            await database()["async_engine"].connect()
+            print("Connected to PostgreSQL database")
+            return
+        except Exception as e:
+            print(f"PostgreSQL connection failed: {str(e)}")
+            print("Falling back to SQLite database")
+            # Fall back to SQLite
+            USE_SQLITE = True
+            DATABASE_URL = SQLITE_URL
+            ASYNC_DATABASE_URL = ASYNC_SQLITE_URL
+            
+            # Recreate engines with SQLite
+            engine = create_engine(
+                DATABASE_URL,
+                connect_args={"check_same_thread": False} if USE_SQLITE else {},
+                poolclass=QueuePool
+            )
+            async_engine = create_async_engine(
+                ASYNC_DATABASE_URL,
+                connect_args={"check_same_thread": False} if USE_SQLITE else {}
+            )
+    
+    # Connect to SQLite if that's what we're using
+    if USE_SQLITE:
+        # For SQLite, create tables if they don't exist
+        Base.metadata.create_all(bind=engine)
+        print("Created SQLite tables")
+        print("Connected to SQLite database")
 
 async def disconnect_from_db():
     """Disconnect from database on app shutdown."""
-    await database()["async_engine"].disconnect()
+    print("Disconnecting from database...")
+    if not USE_SQLITE:
+        try:
+            await database()["async_engine"].disconnect()
+        except Exception as e:
+            print(f"Error disconnecting from PostgreSQL: {str(e)}")
+    
     engine.dispose()
-    await database.disconnect() 
+    await async_engine.dispose()
+    print("Disconnected from database") 

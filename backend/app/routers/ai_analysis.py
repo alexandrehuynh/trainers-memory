@@ -18,19 +18,26 @@ Environment variables:
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from typing import List, Dict, Any, Optional
+from typing import Dict, Any, Optional, List
+# Uncomment pandas import since it's used in the code
 import pandas as pd
-import numpy as np
+# Uncomment numpy if it's actually needed elsewhere in the file
+# import numpy as np
 from openai import OpenAI
 import os
-from pydantic import BaseModel, Field, UUID4
+from pydantic import BaseModel, Field
 from datetime import datetime
 import time
 from collections import deque
-
-# Import API key dependency and standard response
-from ..main import get_api_key
+from ..auth_utils import get_api_key
 from ..utils.response import StandardResponse
+
+# Create router
+router = APIRouter(
+    prefix="/intelligence/analysis",
+    tags=["intelligence"],
+    responses={404: {"description": "Not found"}},
+)
 
 # Define models if they don't exist in a central place
 class AIAnalysisRequest(BaseModel):
@@ -62,13 +69,6 @@ class SimpleRateLimiter:
 
 # Create a rate limiter instance (3 requests per minute)
 rate_limiter = SimpleRateLimiter(max_requests=3, time_window=60)
-
-# Create router
-router = APIRouter(
-    prefix="/intelligence/analysis",
-    tags=["intelligence"],
-    responses={404: {"description": "Not found"}},
-)
 
 # OpenAI client will be initialized only when needed
 client = None
