@@ -21,8 +21,8 @@ interface ApiResponse<T> {
   api_version: string;
 }
 
-// Simple in-memory cache
-const cache: Record<string, { data: any; timestamp: number }> = {};
+// Cache storage for API responses
+const apiCache: Record<string, { timestamp: number; data: any }> = {};
 const CACHE_EXPIRY = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 // Function to generate a cache key
@@ -40,12 +40,20 @@ const isCacheValid = (cacheTimestamp: number): boolean => {
 /**
  * Make an API request with caching and retry support
  */
-async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+export async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
+  const {
+    method = 'GET',
+    body = null,
+    cache = true,
+    retries = 3,
+    retryDelay = 1000,
+    skipCache = false,
+  } = options;
+
   const url = `${API_BASE_URL}${endpoint}`;
   const token = getJwtToken();
-  const cacheEnabled = options.cache !== false; // Cache enabled by default
-  const maxRetries = options.retries || 2; // Default to 2 retries
-  const retryDelay = options.retryDelay || 1000; // Default to 1 second delay between retries
+  const cacheEnabled = cache !== false; // Cache enabled by default
+  const maxRetries = retries; // Use the provided retries
   
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -58,26 +66,25 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   }
   
   const config: RequestInit = {
-    method: options.method || 'GET',
+    method,
     headers,
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body: body ? JSON.stringify(body) : undefined,
   };
   
   // Check cache for GET requests
-  if (cacheEnabled && config.method === 'GET' && !options.skipCache) {
+  if (cacheEnabled && method === 'GET' && !skipCache) {
     const cacheKey = getCacheKey(url, options);
-    const cachedData = cache[cacheKey];
-    
+    const cachedData = apiCache[cacheKey];
     if (cachedData && isCacheValid(cachedData.timestamp)) {
-      console.log('Using cached data for:', endpoint);
-      return cachedData.data as T;
+      console.log(`Cache hit for ${endpoint}`);
+      return cachedData.data;
     }
   }
   
   // Function to handle the actual fetch with retries
   const fetchWithRetry = async (retries: number): Promise<T> => {
     try {
-      console.log(`API Request: ${options.method || 'GET'} ${endpoint}`);
+      console.log(`API Request: ${method} ${endpoint}`);
       const response = await fetch(url, config);
       
       // Handle 401 Unauthorized (token expired)
@@ -119,12 +126,13 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
         const processedData = processResponseData(endpoint, responseData.data);
         
         // Cache successful GET responses
-        if (cacheEnabled && config.method === 'GET') {
+        if (cacheEnabled && method === 'GET') {
           const cacheKey = getCacheKey(url, options);
-          cache[cacheKey] = { 
-            data: processedData, 
-            timestamp: Date.now() 
+          apiCache[cacheKey] = { 
+            timestamp: Date.now(),
+            data: processedData 
           };
+          console.log(`Cached response for ${endpoint}`);
         }
         
         return processedData as T;
@@ -165,7 +173,7 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
   };
   
   // Determine if this is a mutation operation that should invalidate cache
-  const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(options.method || '');
+  const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(method || '');
   
   try {
     const result = await fetchWithRetry(maxRetries);
@@ -174,8 +182,16 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     if (isMutation) {
       // Parse the endpoint to determine what resource is being modified
       const resourcePath = endpoint.split('/')[1]; // e.g., 'clients' from '/clients/123'
-      console.log(`Clearing cache for resource: ${resourcePath} after ${options.method} operation`);
-      clearApiCache(`/${resourcePath}`);
+      console.log(`Clearing cache for resource: ${resourcePath} after ${method} operation`);
+      
+      // Clear the specific endpoint cache
+      clearApiCache(endpoint);
+      
+      // Clear the collection endpoint cache as well (e.g., "/clients" when modifying "/clients/123")
+      if (resourcePath) {
+        clearApiCache(`/${resourcePath}`);
+        console.log(`Also cleared collection cache: /${resourcePath}`);
+      }
     }
     
     return result;
@@ -218,26 +234,18 @@ async function refreshAuthToken(): Promise<boolean> {
 // Helper to clear cache entries
 export function clearApiCache(endpoint?: string): void {
   if (endpoint) {
-    // Clear specific endpoint cache entries
-    const prefix = `GET:${API_BASE_URL}${endpoint}`;
-    console.log(`Clearing cache entries that start with: ${prefix}`);
-    let clearedCount = 0;
+    const cacheKeys = Object.keys(apiCache);
+    const keysToRemove = cacheKeys.filter(key => key.includes(endpoint));
     
-    Object.keys(cache).forEach(key => {
-      if (key.startsWith(prefix)) {
-        delete cache[key];
-        clearedCount++;
-      }
+    keysToRemove.forEach(key => {
+      console.log(`Clearing cache for: ${key}`);
+      delete apiCache[key];
     });
     
-    console.log(`Cleared ${clearedCount} cache entries for ${endpoint}`);
+    console.log(`Cleared ${keysToRemove.length} cache entries for: ${endpoint}`);
   } else {
-    // Clear all cache
     console.log('Clearing entire API cache');
-    Object.keys(cache).forEach(key => {
-      delete cache[key];
-    });
-    console.log(`Cleared ${Object.keys(cache).length} cache entries`);
+    Object.keys(apiCache).forEach(key => delete apiCache[key]);
   }
 }
 

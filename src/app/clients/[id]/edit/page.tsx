@@ -60,7 +60,7 @@ export default function EditClientPage() {
         name: 'John Doe',
         email: 'john@example.com',
         phone: '555-123-4567',
-        notes: 'Regular client since 2022',
+        notes: '',
       });
     } finally {
       setIsLoading(false);
@@ -89,14 +89,14 @@ export default function EditClientPage() {
         // Force skip cache on the next navigation by adding a timestamp parameter
         router.push(`/clients/${clientId}?t=${Date.now()}`);
       }, 500); // 500ms delay
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error updating client:', err);
-      setError('Failed to update client. Please try again.');
+      // Display a more specific error message if available
+      const errorMessage = err.message || 'Failed to update client. Please try again.';
+      setError(errorMessage);
       
-      // For demo/development, redirect after a delay to simulate success
-      setTimeout(() => {
-        router.push(`/clients/${clientId}?t=${Date.now()}`);
-      }, 1000);
+      // Keep the form visible with the error message instead of redirecting
+      // This allows the user to correct any issues and try again
     } finally {
       setIsSaving(false);
     }

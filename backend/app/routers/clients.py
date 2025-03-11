@@ -61,8 +61,8 @@ async def get_clients(
             "id": str(client.id),
             "name": client.name,
             "email": client.email,
-            "phone": client.phone,
-            "notes": client.notes,
+            "phone": client.phone or "",
+            "notes": client.notes or "",
             "created_at": client.created_at.isoformat() if client.created_at else None,
             "updated_at": client.updated_at.isoformat() if client.updated_at else None
         })
@@ -103,8 +103,8 @@ async def get_client(
         "id": str(client.id),
         "name": client.name,
         "email": client.email,
-        "phone": client.phone,
-        "notes": client.notes,
+        "phone": client.phone or "",
+        "notes": client.notes or "",
         "created_at": client.created_at.isoformat() if client.created_at else None,
         "updated_at": client.updated_at.isoformat() if client.updated_at else None
     }

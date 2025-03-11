@@ -68,10 +68,15 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
         headers={"WWW-Authenticate": "Bearer"},
     )
     
+    # Safety check - ensure token is not None
+    if not token:
+        raise credentials_exception
+    
     try:
         # Print debug info - safely handle None values
-        token_prefix = token[:10] if token and len(token) > 10 else token
-        secret_prefix = JWT_SECRET[:5] if JWT_SECRET and len(JWT_SECRET) > 5 else "None"
+        token_prefix = token[:10] if token and len(token) > 10 else str(token)
+        # JWT_SECRET is now guaranteed to be a string by our initialization logic above
+        secret_prefix = JWT_SECRET[:5] if len(JWT_SECRET) > 5 else JWT_SECRET
         print(f"Token received: {token_prefix}...")
         print(f"Using JWT_SECRET: {secret_prefix}...")
         

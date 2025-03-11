@@ -5,6 +5,8 @@ from fastapi.security import APIKeyHeader
 from typing import Optional, List, Dict, Any
 import os
 from datetime import datetime
+from contextlib import asynccontextmanager
+from dotenv import load_dotenv
 
 # Import StandardResponse from utils
 from app.utils.response import StandardResponse, API_VERSION
@@ -16,27 +18,42 @@ from sqlalchemy.ext.asyncio import AsyncSession
 # Import authentication utilities
 from app.auth import get_current_user, refresh_token, verify_user_role, verify_permission
 
-# API title and description
-API_TITLE = "Trainer's Memory API"
-API_DESCRIPTION = """
-An AI-powered fitness intelligence layer that gives fitness platforms the ability to understand, 
-analyze, and derive insights from client workout data.
-"""
+# Import routers
+from app.routers import clients, workouts, intelligence, transformation, communication, analytics, coaching, content
+from app.routers import ai_analysis, ocr
 
-# Create FastAPI application
+# Load environment variables
+load_dotenv()
+
+# Create the lifespan context manager
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Connect to database
+    print("Starting up API server...")
+    await connect_to_db()
+    yield
+    # Shutdown: Disconnect from database
+    print("Shutting down API server...")
+    await disconnect_from_db()
+
+# Create FastAPI app with lifespan
 app = FastAPI(
-    title=API_TITLE,
-    description=API_DESCRIPTION,
-    version=API_VERSION,
-    docs_url=f"/api/{API_VERSION}/docs",
-    redoc_url=f"/api/{API_VERSION}/redoc",
-    openapi_url=f"/api/{API_VERSION}/openapi.json",
+    title="Trainer's Memory API",
+    description="API for personal trainers to manage clients and workouts",
+    version="1.0.0",
+    lifespan=lifespan
 )
 
-# Enable CORS
+# Configure CORS
+origins = [
+    "http://localhost:3000",  # Next.js frontend
+    "http://localhost:8000",  # FastAPI backend (for docs)
+    # Add any other origins as needed
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # For production, specify actual origins
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -204,9 +221,9 @@ def custom_openapi():
         return app.openapi_schema
     
     openapi_schema = get_openapi(
-        title=API_TITLE,
+        title="Trainer's Memory API",
         version=API_VERSION,
-        description=API_DESCRIPTION,
+        description="API for personal trainers to manage clients and workouts",
         routes=app.routes,
     )
     
@@ -241,10 +258,6 @@ def custom_openapi():
     return app.openapi_schema
 
 app.openapi = custom_openapi
-
-# Import routers last to avoid circular imports
-from app.routers import clients, workouts, intelligence, transformation, communication, analytics, coaching, content
-from app.routers import ai_analysis, ocr
 
 # Mount routers with version prefix
 app.include_router(
@@ -308,21 +321,6 @@ app.include_router(
     prefix=f"/api/{API_VERSION}",
     tags=["Transformation"],
 )
-
-# Register startup and shutdown events
-@app.on_event("startup")
-async def startup():
-    """Run startup tasks."""
-    print("Starting up the application...")
-    await connect_to_db()
-    print("Connected to database")
-
-@app.on_event("shutdown")
-async def shutdown():
-    """Run shutdown tasks."""
-    print("Shutting down the application...")
-    await disconnect_from_db()
-    print("Disconnected from database")
 
 # Entry point
 if __name__ == "__main__":

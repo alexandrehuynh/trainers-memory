@@ -13,6 +13,7 @@ import { workoutsApi } from '@/lib/apiClient';
 
 interface WorkoutFormData {
   client_id: string;
+  client_name?: string;
   date: string;
   type: string;
   duration: number;
@@ -37,9 +38,9 @@ export default function NewWorkoutPage() {
   
   const [clients, setClients] = useState<Client[]>([]);
   const [formData, setFormData] = useState<WorkoutFormData>({
-    client_id: clientIdParam || '',
+    client_id: searchParams?.get('client_id') || '',
     date: new Date().toISOString().split('T')[0],
-    type: '',
+    type: 'Strength',
     duration: 60,
     notes: '',
     exercises: [
@@ -152,14 +153,14 @@ export default function NewWorkoutPage() {
           router.push(`/workouts?t=${Date.now()}`);
         }
       }, 500);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error creating workout:', err);
-      setError('Failed to create workout. Please try again.');
+      // Display a more specific error message if available
+      const errorMessage = err.message || 'Failed to create workout. Please try again.';
+      setError(errorMessage);
       
-      // For demo purposes, redirect to the workouts list after 1 second
-      setTimeout(() => {
-        router.push(`/workouts?t=${Date.now()}`);
-      }, 1000);
+      // Keep the form visible with the error message instead of redirecting
+      // This allows the user to correct any issues and try again
     } finally {
       setIsSaving(false);
     }

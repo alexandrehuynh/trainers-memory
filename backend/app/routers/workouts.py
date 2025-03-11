@@ -120,7 +120,7 @@ async def get_workouts(
                 "sets": exercise.sets,
                 "reps": exercise.reps,
                 "weight": float(exercise.weight),
-                "notes": exercise.notes
+                "notes": exercise.notes or ""
             })
         
         # Format workout data
@@ -131,7 +131,7 @@ async def get_workouts(
             "date": workout.date.isoformat() if isinstance(workout.date, datetime) else workout.date,
             "type": workout.type,
             "duration": workout.duration,
-            "notes": workout.notes,
+            "notes": workout.notes or "",
             "exercises": serialized_exercises,
             "created_at": workout.created_at.isoformat() if workout.created_at else None
         })
@@ -187,7 +187,7 @@ async def get_workout(
             "sets": exercise.sets,
             "reps": exercise.reps,
             "weight": float(exercise.weight),
-            "notes": exercise.notes
+            "notes": exercise.notes or ""
         })
     
     # Format workout data
@@ -198,7 +198,7 @@ async def get_workout(
         "date": workout.date.isoformat() if isinstance(workout.date, datetime) else workout.date,
         "type": workout.type,
         "duration": workout.duration,
-        "notes": workout.notes,
+        "notes": workout.notes or "",
         "exercises": serialized_exercises,
         "created_at": workout.created_at.isoformat() if workout.created_at else None
     }
@@ -262,7 +262,7 @@ async def create_workout(
             "sets": db_exercise.sets,
             "reps": db_exercise.reps,
             "weight": float(db_exercise.weight),
-            "notes": db_exercise.notes
+            "notes": db_exercise.notes or ""
         })
     
     # Prepare response
@@ -273,7 +273,7 @@ async def create_workout(
         "date": db_workout.date.isoformat(),
         "type": db_workout.type,
         "duration": db_workout.duration,
-        "notes": db_workout.notes,
+        "notes": db_workout.notes or "",
         "exercises": exercises_data,
         "created_at": db_workout.created_at.isoformat() if db_workout.created_at else None
     }
@@ -356,7 +356,7 @@ async def update_workout(
                 "sets": db_exercise.sets,
                 "reps": db_exercise.reps,
                 "weight": float(db_exercise.weight),
-                "notes": db_exercise.notes
+                "notes": db_exercise.notes or ""
             })
     else:
         # Get existing exercises
@@ -369,7 +369,7 @@ async def update_workout(
                 "sets": exercise.sets,
                 "reps": exercise.reps,
                 "weight": float(exercise.weight),
-                "notes": exercise.notes
+                "notes": exercise.notes or ""
             })
     
     # Get client name
@@ -384,7 +384,7 @@ async def update_workout(
         "date": updated_workout.date.isoformat() if isinstance(updated_workout.date, datetime) else updated_workout.date,
         "type": updated_workout.type,
         "duration": updated_workout.duration,
-        "notes": updated_workout.notes,
+        "notes": updated_workout.notes or "",
         "exercises": exercises_data,
         "created_at": updated_workout.created_at.isoformat() if updated_workout.created_at else None,
         "updated_at": updated_workout.updated_at.isoformat() if updated_workout.updated_at else None

@@ -69,13 +69,13 @@ export default function EditWorkoutPage() {
       console.error('Error fetching workout:', err);
       setError('Failed to load workout details. Please try again later.');
       
-      // For demo purposes, set sample data
+      // For demo purposes
       setFormData({
         client_id: '1',
         date: new Date().toISOString().split('T')[0],
-        type: 'Strength Training',
+        type: 'Strength',
         duration: 60,
-        notes: 'Focused on upper body. Increased weight on bench press.',
+        notes: '',
         exercises: [
           {
             id: crypto.randomUUID(),
@@ -83,7 +83,7 @@ export default function EditWorkoutPage() {
             sets: 3,
             reps: 10,
             weight: 135,
-            notes: 'Felt strong, could increase weight next time',
+            notes: '',
           },
           {
             id: crypto.randomUUID(),
@@ -170,14 +170,14 @@ export default function EditWorkoutPage() {
         // Force skip cache on the next navigation by adding a timestamp parameter
         router.push(`/workouts/${workoutId}?t=${Date.now()}`);
       }, 500); // 500ms delay
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error updating workout:', err);
-      setError('Failed to update workout. Please try again.');
+      // Display a more specific error message if available
+      const errorMessage = err.message || 'Failed to update workout. Please try again.';
+      setError(errorMessage);
       
-      // For demo purposes, simulate success and redirect
-      setTimeout(() => {
-        router.push(`/workouts/${workoutId}?t=${Date.now()}`);
-      }, 1000);
+      // Keep the form visible with the error message instead of redirecting
+      // This allows the user to correct any issues and try again
     } finally {
       setIsSaving(false);
     }

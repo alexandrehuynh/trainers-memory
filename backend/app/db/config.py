@@ -15,6 +15,7 @@ from sqlalchemy.pool import QueuePool
 from contextlib import contextmanager
 from databases import Database
 from dotenv import load_dotenv
+from functools import lru_cache
 
 load_dotenv()
 
@@ -27,11 +28,13 @@ if USE_SQLITE:
     ASYNC_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
 else:
     # PostgreSQL configuration (for production)
-    DATABASE_URL = os.getenv(
-        "DATABASE_URL", 
-        "postgresql://alexhuynh:@localhost:5432/trainers_memory"
-    )
-    ASYNC_DATABASE_URL = DATABASE_URL.replace('postgresql://', 'postgresql+asyncpg://')
+    DB_HOST = os.getenv("DB_HOST", "localhost")
+    DB_PORT = os.getenv("DB_PORT", "5432")
+    DB_NAME = os.getenv("DB_NAME", "trainers_memory")
+    DB_USER = os.getenv("DB_USER", "postgres")
+    DB_PASS = os.getenv("DB_PASS", "postgres")
+    DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    ASYNC_DATABASE_URL = f"postgresql+asyncpg://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
 
 # Create database engines
 if USE_SQLITE:
@@ -47,32 +50,24 @@ if USE_SQLITE:
     )
 else:
     # PostgreSQL configuration
-    engine = create_engine(
-        DATABASE_URL,
-        pool_size=5,
-        max_overflow=10,
-        pool_recycle=3600,
-        pool_pre_ping=True,
-    )
-    async_engine = create_async_engine(
-        ASYNC_DATABASE_URL,
-        echo=False,
-        future=True,
-        pool_size=5,
-        max_overflow=10,
-        pool_recycle=3600,
-        pool_pre_ping=True,
-    )
+    engine = create_engine(DATABASE_URL)
+    async_engine = create_async_engine(ASYNC_DATABASE_URL)
 
 # Create session factories
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-# Use sessionmaker with AsyncSession class for SQLAlchemy 1.4.x
+SessionLocal = sessionmaker(
+    autocommit=False, 
+    autoflush=False, 
+    bind=engine,
+    future=True  # Use the SQLAlchemy 2.0 API
+)
+
 AsyncSessionLocal = sessionmaker(
     class_=AsyncSession,
     autocommit=False,
     autoflush=False,
     bind=async_engine,
-    expire_on_commit=False
+    future=True,  # Use the SQLAlchemy 2.0 API
+    expire_on_commit=False  # Prevents errors when accessing attributes after commit
 )
 
 # Initialize database connection
@@ -103,18 +98,22 @@ def get_db() -> Generator[Session, None, None]:
 
 async def get_async_db() -> AsyncGenerator[AsyncSession, None]:
     """Get an asynchronous database session."""
-    # Updated async session handling for SQLAlchemy 1.4.x
-    session = AsyncSessionLocal()
-    try:
+    async with AsyncSessionLocal() as session:
         yield session
-    finally:
-        await session.close()
 
 # Connect and disconnect methods for startup/shutdown events
+@lru_cache
+def database():
+    """Get a database connection."""
+    return {"engine": engine, "async_engine": async_engine}
+
 async def connect_to_db():
     """Connect to database on app startup."""
-    await database.connect()
+    await database()["async_engine"].connect()
+    print("Connected to database")
 
 async def disconnect_from_db():
     """Disconnect from database on app shutdown."""
+    await database()["async_engine"].disconnect()
+    engine.dispose()
     await database.disconnect() 
