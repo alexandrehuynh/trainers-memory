@@ -204,7 +204,7 @@ function processResponseData(endpoint: string, data: any): any {
   // Handle formatted API responses with { status, data } structure
   if (data && typeof data === 'object' && data.status === 'success' && data.data !== undefined) {
     // Special case handling for endpoints that return nested data structures
-    if (endpoint.includes('/workouts/workouts') && data.data.workouts && Array.isArray(data.data.workouts)) {
+    if (endpoint.includes('/workouts') && data.data.workouts && Array.isArray(data.data.workouts)) {
       return data.data.workouts;
     }
     
@@ -220,7 +220,7 @@ function processResponseData(endpoint: string, data: any): any {
   // For responses that don't follow the standard format
   // Check for nested data structures directly
   if (data && typeof data === 'object') {
-    if (endpoint.includes('/workouts/workouts') && data.workouts && Array.isArray(data.workouts)) {
+    if (endpoint.includes('/workouts') && data.workouts && Array.isArray(data.workouts)) {
       return data.workouts;
     }
     
@@ -329,13 +329,13 @@ export const clientsApi = {
 
 // Workout API endpoints
 export const workoutsApi = {
-  getAll: (options: RequestOptions = {}) => apiClient.get<Workout[]>('/workouts/workouts', options),
-  getById: (id: string, options: RequestOptions = {}) => apiClient.get<Workout>(`/workouts/workouts/${id}`, options),
+  getAll: (options: RequestOptions = {}) => apiClient.get<Workout[]>('/workouts', options),
+  getById: (id: string, options: RequestOptions = {}) => apiClient.get<Workout>(`/workouts/${id}`, options),
   getByClientId: (clientId: string, options: RequestOptions = {}) => 
-    apiClient.get<Workout[]>(`/workouts/workouts?client_id=${clientId}`, options),
+    apiClient.get<Workout[]>(`/workouts?client_id=${clientId}`, options),
   create: (data: Omit<Workout, 'id' | 'created_at' | 'updated_at'>, options: RequestOptions = {}) => 
-    apiClient.post<Workout>('/workouts/workouts', data, options),
+    apiClient.post<Workout>('/workouts', data, options),
   update: (id: string, data: Partial<Omit<Workout, 'id' | 'created_at' | 'updated_at'>>, options: RequestOptions = {}) => 
-    apiClient.put<Workout>(`/workouts/workouts/${id}`, data, options),
-  delete: (id: string, options: RequestOptions = {}) => apiClient.delete<void>(`/workouts/workouts/${id}`, options),
+    apiClient.put<Workout>(`/workouts/${id}`, data, options),
+  delete: (id: string, options: RequestOptions = {}) => apiClient.delete<void>(`/workouts/${id}`, options),
 }; 

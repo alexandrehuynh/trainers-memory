@@ -117,7 +117,7 @@ class TestWorkoutEndpoints:
         mock_exercise_repo_instance.get_by_workout.return_value = [mock_exercise]
         
         # Make request
-        response = client.get("/api/v1/workouts/workouts", headers=auth_headers)
+        response = client.get("/api/v1/workouts", headers=auth_headers)
         
         # Assertions
         assert response.status_code == 200
