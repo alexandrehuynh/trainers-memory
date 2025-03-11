@@ -83,15 +83,19 @@ export default function EditClientPage() {
     try {
       await clientsApi.update(clientId, formData);
       
-      // Redirect to client detail page on success
-      router.push(`/clients/${clientId}`);
+      // Add a small delay before redirecting to ensure the server has processed the update
+      // and the cache has been cleared
+      setTimeout(() => {
+        // Force skip cache on the next navigation by adding a timestamp parameter
+        router.push(`/clients/${clientId}?t=${Date.now()}`);
+      }, 500); // 500ms delay
     } catch (err) {
       console.error('Error updating client:', err);
       setError('Failed to update client. Please try again.');
       
       // For demo/development, redirect after a delay to simulate success
       setTimeout(() => {
-        router.push(`/clients/${clientId}`);
+        router.push(`/clients/${clientId}?t=${Date.now()}`);
       }, 1000);
     } finally {
       setIsSaving(false);

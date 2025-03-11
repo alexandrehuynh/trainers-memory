@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button';
 import Link from 'next/link';
 import { getJwtToken } from '@/lib/tokenHelper';
 import { Client, clientsApi } from '@/lib/apiClient';
+import { workoutsApi } from '@/lib/apiClient';
 
 interface WorkoutFormData {
   client_id: string;
@@ -130,25 +131,35 @@ export default function NewWorkoutPage() {
     setError(null);
 
     try {
-      const response = await fetch('http://localhost:8000/api/v1/workouts', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${getJwtToken() || ''}`,
-          'X-API-Key': 'test_key_12345'
-        },
-        body: JSON.stringify(formData),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to create workout');
-      }
-
-      // Redirect to workouts page on success
-      router.push('/workouts');
+      // Find the selected client to get their name
+      const selectedClient = clients.find(client => client.id === formData.client_id);
+      
+      // Use the workoutsApi instead of direct fetch
+      const workoutData = {
+        ...formData,
+        client_name: selectedClient?.name || 'Unknown Client'
+      };
+      
+      const result = await workoutsApi.create(workoutData);
+      
+      // Short delay to ensure server has processed the request
+      setTimeout(() => {
+        // If we have an ID, redirect to the workout detail page
+        if (result && result.id) {
+          router.push(`/workouts/${result.id}?t=${Date.now()}`);
+        } else {
+          // If no ID (shouldn't happen), redirect to workouts list
+          router.push(`/workouts?t=${Date.now()}`);
+        }
+      }, 500);
     } catch (err) {
       console.error('Error creating workout:', err);
       setError('Failed to create workout. Please try again.');
+      
+      // For demo purposes, redirect to the workouts list after 1 second
+      setTimeout(() => {
+        router.push(`/workouts?t=${Date.now()}`);
+      }, 1000);
     } finally {
       setIsSaving(false);
     }

@@ -17,6 +17,12 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 JWT_SECRET = os.getenv("JWT_SECRET")
 SUPABASE_URL = os.getenv("SUPABASE_URL")
 
+# Validate JWT_SECRET to avoid NoneType errors
+if not JWT_SECRET:
+    print("WARNING: JWT_SECRET environment variable is not set. Using a default value for development.")
+    # Use a default secret for development - do not use in production!
+    JWT_SECRET = "development_secret_key_do_not_use_in_production"
+
 # For Supabase, this MUST be "HS256"
 JWT_ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24  # 24 hours
@@ -63,9 +69,11 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     )
     
     try:
-        # Print debug info
-        print(f"Token received: {token[:10]}...")
-        print(f"Using JWT_SECRET: {JWT_SECRET[:5]}...")
+        # Print debug info - safely handle None values
+        token_prefix = token[:10] if token and len(token) > 10 else token
+        secret_prefix = JWT_SECRET[:5] if JWT_SECRET and len(JWT_SECRET) > 5 else "None"
+        print(f"Token received: {token_prefix}...")
+        print(f"Using JWT_SECRET: {secret_prefix}...")
         
         try:
             # Verify the token using our secret

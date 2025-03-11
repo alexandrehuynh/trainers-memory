@@ -164,7 +164,24 @@ async function request<T>(endpoint: string, options: RequestOptions = {}): Promi
     }
   };
   
-  return fetchWithRetry(maxRetries);
+  // Determine if this is a mutation operation that should invalidate cache
+  const isMutation = ['POST', 'PUT', 'PATCH', 'DELETE'].includes(options.method || '');
+  
+  try {
+    const result = await fetchWithRetry(maxRetries);
+    
+    // Clear relevant caches after successful mutations
+    if (isMutation) {
+      // Parse the endpoint to determine what resource is being modified
+      const resourcePath = endpoint.split('/')[1]; // e.g., 'clients' from '/clients/123'
+      console.log(`Clearing cache for resource: ${resourcePath} after ${options.method} operation`);
+      clearApiCache(`/${resourcePath}`);
+    }
+    
+    return result;
+  } catch (error) {
+    throw error;
+  }
 }
 
 // Helper function to process response data based on endpoint
@@ -203,16 +220,24 @@ export function clearApiCache(endpoint?: string): void {
   if (endpoint) {
     // Clear specific endpoint cache entries
     const prefix = `GET:${API_BASE_URL}${endpoint}`;
+    console.log(`Clearing cache entries that start with: ${prefix}`);
+    let clearedCount = 0;
+    
     Object.keys(cache).forEach(key => {
       if (key.startsWith(prefix)) {
         delete cache[key];
+        clearedCount++;
       }
     });
+    
+    console.log(`Cleared ${clearedCount} cache entries for ${endpoint}`);
   } else {
     // Clear all cache
+    console.log('Clearing entire API cache');
     Object.keys(cache).forEach(key => {
       delete cache[key];
     });
+    console.log(`Cleared ${Object.keys(cache).length} cache entries`);
   }
 }
 

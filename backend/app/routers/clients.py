@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, EmailStr
 from datetime import datetime
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi.responses import JSONResponse
 
 # Import API key dependency and standard response
 from ..main import get_api_key
@@ -114,17 +115,13 @@ async def get_client(
     )
 
 # POST /clients - Create a new client
-@router.post("/clients", status_code=status.HTTP_201_CREATED, response_model=Dict[str, Any])
+@router.post("/clients", response_model=Dict[str, Any])
 async def create_client(
     client: ClientCreate,
     client_info: Dict[str, Any] = Depends(get_api_key),
     db: AsyncSession = Depends(get_async_db)
 ):
-    """
-    Create a new client.
-    
-    - **client**: Client data to create
-    """
+    """Create a new client."""
     client_repo = AsyncClientRepository(db)
     
     # Check if client with this email already exists
@@ -142,7 +139,8 @@ async def create_client(
     
     db_client = await client_repo.create(client_data)
     
-    return StandardResponse.success(
+    # Create the response with the appropriate data
+    response_data = StandardResponse.success(
         data={
             "id": str(db_client.id),
             "name": db_client.name,
@@ -151,7 +149,12 @@ async def create_client(
             "notes": db_client.notes,
             "created_at": db_client.created_at.isoformat() if db_client.created_at else None
         },
-        message="Client created successfully",
+        message="Client created successfully"
+    )
+    
+    # Return the response with the desired status code using JSONResponse
+    return JSONResponse(
+        content=response_data,
         status_code=status.HTTP_201_CREATED
     )
 

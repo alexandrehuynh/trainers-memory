@@ -164,15 +164,19 @@ export default function EditWorkoutPage() {
     try {
       await workoutsApi.update(workoutId, formData);
 
-      // Redirect to workout details on success
-      router.push(`/workouts/${workoutId}`);
+      // Add a small delay before redirecting to ensure the server has processed the update
+      // and the cache has been cleared
+      setTimeout(() => {
+        // Force skip cache on the next navigation by adding a timestamp parameter
+        router.push(`/workouts/${workoutId}?t=${Date.now()}`);
+      }, 500); // 500ms delay
     } catch (err) {
       console.error('Error updating workout:', err);
       setError('Failed to update workout. Please try again.');
       
       // For demo purposes, simulate success and redirect
       setTimeout(() => {
-        router.push(`/workouts/${workoutId}`);
+        router.push(`/workouts/${workoutId}?t=${Date.now()}`);
       }, 1000);
     } finally {
       setIsSaving(false);
