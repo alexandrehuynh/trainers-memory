@@ -7,14 +7,18 @@ It implements:
 2. Rate limiting (3 requests per minute) to comply with OpenAI's free tier limits
 3. Graceful handling of rate limit errors with automatic waiting and retries
 4. Status endpoint to monitor current rate limit usage
+5. Redis-based caching for OpenAI responses to reduce costs and improve performance
 
 Usage:
 - POST /api/v1/intelligence/analysis/analyze - Analyze client workout data
 - GET /api/v1/intelligence/analysis/rate-limit-status - Check current rate limit status
+- POST /api/v1/intelligence/analysis/clear-cache - Clear the OpenAI response cache
 
 Environment variables:
 - OPENAI_API_KEY: Your OpenAI API key
 - OPENAI_MODEL: (Optional) Override the default model (gpt-4o-mini)
+- REDIS_URL: (Optional) Redis connection URL for caching (default: redis://localhost:6379/0)
+- OPENAI_CACHE_TTL: (Optional) Cache TTL in seconds (default: 3600)
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -31,6 +35,8 @@ import time
 from collections import deque
 from ..auth_utils import get_api_key
 from ..utils.response import StandardResponse
+from ..utils.cache.openai_cache import openai_cache
+from ..utils.fitness_data.embedding_tools import get_rag_context
 
 # Create router
 router = APIRouter(
@@ -43,10 +49,19 @@ router = APIRouter(
 class AIAnalysisRequest(BaseModel):
     client_id: str = Field(..., example="c1d2e3f4-g5h6-i7j8-k9l0-m1n2o3p4q5r6")
     query: str = Field(..., example="What are the trends in bench press performance?")
+    force_refresh: bool = Field(False, description="If true, ignore cached results and force a new API call")
 
 class AIAnalysisResponse(BaseModel):
     answer: str
     data: Optional[Dict[str, Any]] = None
+
+# For cache clearing endpoint
+class CacheClearRequest(BaseModel):
+    client_id: Optional[str] = Field(None, description="If provided, only clear cache for this client")
+
+class CacheClearResponse(BaseModel):
+    entries_cleared: int
+    success: bool
 
 # Simple rate limiter for OpenAI API
 class SimpleRateLimiter:
@@ -97,10 +112,18 @@ def get_best_available_model():
     
     return fallback_models
 
-# Safely create chat completion with fallbacks
-def create_chat_completion(messages, temperature=0.1, max_tokens=500):
+# Safely create chat completion with fallbacks and caching
+def create_chat_completion(messages, temperature=0.1, max_tokens=500, force_refresh=False):
     models = get_best_available_model()
     last_error = None
+    
+    # Check if the response is in cache (if not forcing refresh)
+    if not force_refresh:
+        for model in models:
+            cached_response = openai_cache.get(messages, model)
+            if cached_response:
+                print(f"Using cached response for model {model}")
+                return cached_response
     
     # Check if we're approaching rate limit and wait if needed
     current_time = time.time()
@@ -129,6 +152,27 @@ def create_chat_completion(messages, temperature=0.1, max_tokens=500):
             print(f"Successfully used model: {model}")
             # Record this successful request in our rate limiter
             rate_limiter.add_request()
+            
+            # Cache the successful response
+            # Convert to a cacheable format (response object might not be serializable)
+            cacheable_response = {
+                "model": model,
+                "choices": [
+                    {
+                        "message": {
+                            "content": response.choices[0].message.content,
+                            "role": "assistant"
+                        },
+                        "index": 0
+                    }
+                ],
+                "created": int(time.time()),
+                "cached": True
+            }
+            
+            # Store in cache
+            openai_cache.set(messages, model, cacheable_response)
+            
             return response
         except Exception as e:
             last_error = e
@@ -165,17 +209,19 @@ async def analyze_client_data(
     Analyze client workout data using natural language queries
     
     This endpoint uses OpenAI to analyze workout data and provide insights
-    based on the specific query provided.
+    based on the specific query provided. Results are cached to improve 
+    performance and reduce costs.
     """
-    # Check rate limit
-    if not rate_limiter.can_make_request():
+    # Check rate limit if not using cache
+    if request.force_refresh and not rate_limiter.can_make_request():
         return StandardResponse.error(
             message="Rate limit exceeded. Please try again later.",
             status_code=status.HTTP_429_TOO_MANY_REQUESTS
         )
     
-    # Add this request to the rate limiter
-    rate_limiter.add_request()
+    # Add this request to the rate limiter if we're not using cache
+    if request.force_refresh:
+        rate_limiter.add_request()
     
     try:
         # Get client information (in production, fetch from database)
@@ -221,26 +267,35 @@ async def analyze_client_data(
             "workout_records": workout_records[:10]  # Limit to 10 most recent workouts
         }
         
+        # Get RAG context for the query
+        rag_context = get_rag_context(request.query)
+        
         # Call OpenAI for analysis using our helper with fallbacks
         messages = [
             {"role": "system", "content": "You are a fitness analysis assistant that helps trainers understand their clients' workout data. Provide concise, actionable insights."},
+            {"role": "system", "content": f"Here is some relevant fitness knowledge to help you provide accurate information:\n\n{rag_context}"},
             {"role": "user", "content": f"Analyze the following client workout data. Question: {request.query}"},
             {"role": "system", "content": f"Here's the client data: {str(context)}"}
         ]
         
-        response = create_chat_completion(messages, temperature=0.1, max_tokens=500)
+        response = create_chat_completion(messages, temperature=0.1, max_tokens=500, force_refresh=request.force_refresh)
         
         # Extract and return the AI's analysis
         answer = response.choices[0].message.content
+        
+        # Check if response was from cache
+        from_cache = hasattr(response, 'cached') and response.cached
         
         return StandardResponse.success(
             data={
                 "answer": answer,
                 "query": request.query,
                 "client_name": client_name,
-                "model_used": response.model  # Include which model was actually used
+                "model_used": response.model,  # Include which model was actually used
+                "from_cache": from_cache,
+                "used_rag": True
             },
-            message="Analysis completed successfully"
+            message="Analysis completed successfully" + (" (from cache)" if from_cache else "")
         )
         
     except Exception as e:
@@ -285,7 +340,37 @@ async def get_rate_limit_status(
             "requests_remaining": remaining_capacity,
             "seconds_until_reset": time_until_reset if time_until_reset > 0 else 0,
             "window_size_seconds": rate_limiter.time_window,
-            "current_openai_model": os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+            "current_openai_model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+            "cache_enabled": openai_cache.enabled,
+            "cache_ttl": openai_cache.default_ttl
         },
         message="Rate limit status retrieved successfully"
-    ) 
+    )
+
+# Add a cache clear endpoint
+@router.post("/clear-cache", response_model=Dict[str, Any])
+async def clear_cache(
+    request: CacheClearRequest,
+    client_info: Dict[str, Any] = Depends(get_api_key)
+):
+    """Clear the OpenAI response cache, either for a specific client or all clients"""
+    try:
+        if request.client_id:
+            # Clear cache for specific client
+            entries_cleared = openai_cache.invalidate_by_client(request.client_id)
+        else:
+            # Clear all cache
+            entries_cleared = openai_cache.clear_all()
+        
+        return StandardResponse.success(
+            data={
+                "entries_cleared": entries_cleared,
+                "success": True
+            },
+            message=f"Successfully cleared {entries_cleared} cache entries"
+        )
+    except Exception as e:
+        return StandardResponse.error(
+            message=f"Failed to clear cache: {str(e)}",
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+        ) 

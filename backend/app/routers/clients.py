@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.responses import JSONResponse
 
 # Import API key dependency and standard response
-from ..auth_utils import get_api_key
+from ..auth_utils import get_api_key, validate_api_key
 from ..utils.response import StandardResponse
 from ..db import AsyncClientRepository, get_async_db
 
@@ -118,7 +118,7 @@ async def get_client(
 @router.post("/clients", response_model=Dict[str, Any])
 async def create_client(
     client: ClientCreate,
-    client_info: Dict[str, Any] = Depends(get_api_key),
+    client_info: Dict[str, Any] = Depends(validate_api_key),
     db: AsyncSession = Depends(get_async_db)
 ):
     """Create a new client."""

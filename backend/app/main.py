@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import authentication utilities
 from app.auth import get_current_user, refresh_token, verify_user_role, verify_permission
-from app.auth_utils import get_api_key
+from app.auth_utils import get_api_key, validate_api_key, API_KEY_NAME
 
 # Import routers
 from app.routers import clients, workouts, intelligence, transformation, communication, analytics, coaching, content
@@ -65,7 +65,6 @@ app.add_middleware(
 )
 
 # Add API key authentication scheme
-API_KEY_NAME = "X-API-Key"
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 
 # Add a simple health check endpoint at root
@@ -78,9 +77,9 @@ async def root():
 async def health_check():
     return {"status": "ok", "time": datetime.now().isoformat()}
 
-# Demo endpoint with authentication
+# Demo endpoint with authentication - using the alternative validation method for better Swagger UI compatibility
 @app.get(f"/api/{API_VERSION}/me", tags=["Authentication"])
-async def get_my_info(client_info: Dict[str, Any] = Depends(get_api_key)):
+async def get_my_info(client_info: Dict[str, Any] = Depends(validate_api_key)):
     """Return the client information associated with the API key."""
     return StandardResponse.success(client_info)
 
@@ -120,16 +119,17 @@ def custom_openapi():
         routes=app.routes,
     )
     
-    # Add API Key security scheme
+    # Fix API Key security scheme to ensure it works properly in Swagger UI
     if "components" not in openapi_schema:
         openapi_schema["components"] = {}
         
+    # Define the API Key security scheme - ensure proper configuration
     openapi_schema["components"]["securitySchemes"] = {
         API_KEY_NAME: {
             "type": "apiKey",
             "in": "header",
             "name": API_KEY_NAME,
-            "description": "API Key Authentication",
+            "description": "API Key Authentication. Enter API key as-is without any prefix.",
         }
     }
     
@@ -146,6 +146,23 @@ def custom_openapi():
         "email": "support@trainersmemory.api",
         "url": "https://trainersmemory.api/support",
     }
+    
+    # Add usage examples and tips with markdown formatting (not HTML)
+    openapi_schema["info"]["description"] = """
+    API for personal trainers to manage clients and workouts
+
+    AUTHENTICATION
+    All endpoints require an API key to be provided in the 'X-API-Key' header.
+
+    TESTING WITH SWAGGER UI
+    1. Click the "Authorize" button at the top
+    2. Enter your API key exactly as-is (e.g., tmk_3db7baed7f1c40bb9e39b9c512fdcf8d)
+    3. Click "Authorize" and then "Close"
+    4. Now you can test the endpoints
+
+    TESTING WITH CURL
+    curl -H "X-API-Key: YOUR_API_KEY" http://localhost:8000/api/v1/me
+    """
     
     app.openapi_schema = openapi_schema
     return app.openapi_schema

@@ -411,4 +411,33 @@ export const ocrApi = {
 
     return response;
   },
-}; 
+};
+
+// Function to analyze client workout data using AI
+export async function analyzeClientData(clientId: string, query: string, forceRefresh: boolean = false) {
+  const endpoint = `/intelligence/analysis/analyze`;
+  const response = await request<any>(endpoint, {
+    method: 'POST',
+    body: { client_id: clientId, query, force_refresh: forceRefresh },
+    cache: false // Don't cache the API request itself, as we're using server-side caching
+  });
+  return response.data;
+}
+
+// Function to clear the OpenAI cache
+export async function clearOpenAICache(clientId?: string) {
+  const endpoint = `/intelligence/analysis/clear-cache`;
+  const response = await request<any>(endpoint, {
+    method: 'POST',
+    body: clientId ? { client_id: clientId } : {},
+    cache: false
+  });
+  return response.data;
+}
+
+// Function to get OpenAI rate limit status
+export async function getOpenAIRateLimitStatus() {
+  const endpoint = `/intelligence/analysis/rate-limit-status`;
+  const response = await request<any>(endpoint, { cache: false });
+  return response.data;
+} 
