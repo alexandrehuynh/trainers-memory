@@ -6,11 +6,12 @@ This script generates an API key for testing/development and inserts it into the
 It should be run once to set up a test API key.
 
 Usage:
-    python generate_api_key.py [--client_id CLIENT_ID] [--key_name KEY_NAME]
+    python generate_api_key.py [--client_id CLIENT_ID] [--key_name KEY_NAME] [--email EMAIL]
 
 Options:
     --client_id    Client ID to associate with the key (default: a test client ID)
     --key_name     Name for the API key (default: "Test API Key")
+    --email        Email for the test client (default: a unique generated email)
 """
 
 import os
@@ -22,6 +23,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.future import select
 from dotenv import load_dotenv
+import datetime
 
 # Add the parent directory to the path so we can import app modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -33,7 +35,7 @@ load_dotenv()
 from app.db import Base
 from app.db.models import APIKey, Client
 
-async def create_test_api_key(client_id=None, key_name=None):
+async def create_test_api_key(client_id=None, key_name=None, email=None):
     """Create a test API key and insert it into the database."""
     # Set default values
     if client_id is None:
@@ -41,6 +43,11 @@ async def create_test_api_key(client_id=None, key_name=None):
     
     if key_name is None:
         key_name = "Test API Key"
+    
+    # Generate a unique email if not provided
+    if email is None:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        email = f"test-{timestamp}@example.com"
     
     # Generate a random API key
     api_key = f"tmk_{uuid.uuid4().hex}"
@@ -82,13 +89,14 @@ async def create_test_api_key(client_id=None, key_name=None):
                 client = Client(
                     id=client_id,
                     name="Test Client",
-                    email="test@example.com",
+                    email=email,  # Use the provided or generated email
                     phone="555-123-4567",
-                    created_at=None  # Let the database set the timestamp
+                    created_at=datetime.datetime.now(),
+                    updated_at=datetime.datetime.now()
                 )
                 session.add(client)
                 await session.commit()
-                print("Client created successfully")
+                print(f"Client created successfully with email: {email}")
         
         # Second session to create the API key
         async with async_session() as session:
@@ -108,7 +116,7 @@ async def create_test_api_key(client_id=None, key_name=None):
                 name=key_name,
                 client_id=client_id,
                 active=True,
-                created_at=None,  # Let the database set the timestamp
+                created_at=datetime.datetime.now(),
                 last_used_at=None
             )
             session.add(api_key_obj)
@@ -121,7 +129,8 @@ async def create_test_api_key(client_id=None, key_name=None):
         return {
             "client_id": client_id,
             "api_key": api_key,
-            "key_name": key_name
+            "key_name": key_name,
+            "email": email
         }
     except Exception as e:
         print(f"Error creating API key: {str(e)}")
@@ -135,6 +144,7 @@ async def main():
     parser = argparse.ArgumentParser(description='Generate a test API key.')
     parser.add_argument('--client_id', help='Client ID to associate with the key')
     parser.add_argument('--key_name', help='Name for the API key')
+    parser.add_argument('--email', help='Email for the test client')
     args = parser.parse_args()
     
     print("Generating API key...")
@@ -142,13 +152,15 @@ async def main():
     # Create the API key
     key_info = await create_test_api_key(
         client_id=args.client_id,
-        key_name=args.key_name
+        key_name=args.key_name,
+        email=args.email
     )
     
     # Display results
     print("\nAPI Key Generated Successfully!")
     print("==============================")
     print(f"Client ID: {key_info['client_id']}")
+    print(f"Client Email: {key_info['email']}")
     print(f"API Key:   {key_info['api_key']}")
     print(f"Key Name:  {key_info['key_name']}")
     print("\nUse this API key in the X-API-Key header for your requests")
