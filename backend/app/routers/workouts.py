@@ -60,7 +60,7 @@ class Workout(WorkoutBase):
 # Create router
 router = APIRouter(
     prefix="/workouts",
-    tags=["workouts"],
+    tags=["Workouts"],
     responses={404: {"description": "Not found"}},
 )
 
@@ -74,7 +74,7 @@ def is_valid_date(date_string: str) -> bool:
         return False
 
 # GET /workouts - List all workouts
-@router.get("/workouts", response_model=Dict[str, Any])
+@router.get("/", response_model=Dict[str, Any])
 async def get_workouts(
     skip: int = Query(0, ge=0, description="Number of workouts to skip"),
     limit: int = Query(100, ge=1, le=100, description="Maximum number of workouts to return"),
@@ -150,7 +150,7 @@ async def get_workouts(
     )
 
 # GET /workouts/{workout_id} - Get a specific workout
-@router.get("/workouts/{workout_id}", response_model=Dict[str, Any])
+@router.get("/{workout_id}", response_model=Dict[str, Any])
 async def get_workout(
     workout_id: str = Path(..., description="The ID of the workout to retrieve"),
     client_info: Dict[str, Any] = Depends(get_api_key),
@@ -209,7 +209,7 @@ async def get_workout(
     )
 
 # POST /workouts - Create a new workout
-@router.post("/workouts", status_code=status.HTTP_201_CREATED, response_model=Dict[str, Any])
+@router.post("/", status_code=status.HTTP_201_CREATED, response_model=Dict[str, Any])
 async def create_workout(
     workout: WorkoutCreate,
     client_info: Dict[str, Any] = Depends(get_api_key),
@@ -285,7 +285,7 @@ async def create_workout(
     )
 
 # PUT /workouts/{workout_id} - Update a workout
-@router.put("/workouts/{workout_id}", response_model=Dict[str, Any])
+@router.put("/{workout_id}", response_model=Dict[str, Any])
 async def update_workout(
     workout_update: WorkoutUpdate,
     workout_id: str = Path(..., description="The ID of the workout to update"),
@@ -396,7 +396,7 @@ async def update_workout(
     )
 
 # DELETE /workouts/{workout_id} - Delete a workout
-@router.delete("/workouts/{workout_id}", response_model=Dict[str, Any])
+@router.delete("/{workout_id}", response_model=Dict[str, Any])
 async def delete_workout(
     workout_id: str = Path(..., description="The ID of the workout to delete"),
     client_info: Dict[str, Any] = Depends(get_api_key),
