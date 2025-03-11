@@ -126,7 +126,7 @@ export default function ClientDetailPage() {
         throw new Error('Failed to delete client');
       }
       
-      router.push('/clients');
+      router.push(`/clients?t=${Date.now()}`);
     } catch (err) {
       console.error('Error deleting client:', err);
       setError('Failed to delete client. Please try again.');
@@ -134,7 +134,7 @@ export default function ClientDetailPage() {
       // For demo purposes, simulate success
       setTimeout(() => {
         setShowDeleteConfirm(false);
-        router.push('/clients');
+        router.push(`/clients?t=${Date.now()}`);
       }, 1000);
     } finally {
       setIsDeleting(false);
@@ -286,7 +286,7 @@ export default function ClientDetailPage() {
                   </Link>
                 ))}
                 <div className="text-center pt-4">
-                  <Link href={`/clients/${clientId}/workouts`}>
+                  <Link href={`/workouts?clientId=${clientId}`}>
                     <Button variant="outline">View All Workouts</Button>
                   </Link>
                 </div>

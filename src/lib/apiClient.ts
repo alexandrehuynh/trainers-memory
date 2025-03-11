@@ -96,54 +96,53 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
         }
       }
       
+      // For all other non-200 responses, try to parse the error
       if (!response.ok) {
-        const errorText = await response.text();
-        let errorDetail = 'Unknown error';
+        let errorMessage = `API error: ${response.status} ${response.statusText}`;
         
         try {
-          // Try to parse as JSON
-          const errorData = JSON.parse(errorText);
-          errorDetail = errorData.detail || errorData.message || errorData.error || JSON.stringify(errorData);
+          const errorData = await response.json();
+          if (errorData && errorData.message) {
+            errorMessage = errorData.message;
+          }
         } catch (e) {
-          // If not JSON, use the text directly
-          errorDetail = errorText || `HTTP status ${response.status}`;
+          // If we can't parse JSON, use the text content if available
+          try {
+            const errorText = await response.text();
+            if (errorText) {
+              errorMessage = errorText;
+            }
+          } catch (textError) {
+            // If we can't get text either, just use the status
+            console.error('Could not parse error response', textError);
+          }
         }
         
-        console.error(`API Error (${response.status}): ${endpoint}`, errorDetail);
-        throw new Error(`API error: ${response.status} - ${errorDetail}`);
+        console.error(`API returned error: ${errorMessage}`);
+        throw new Error(errorMessage);
       }
       
-      // For 204 No Content responses
-      if (response.status === 204) {
-        return {} as T;
+      // Parse successful response
+      const data = await response.json();
+      
+      // Process response data based on endpoint to maintain compatibility
+      const processedData = processResponseData(endpoint, data);
+      
+      // Cache GET responses if caching is enabled
+      if (cacheEnabled && method === 'GET') {
+        const cacheKey = getCacheKey(url, options);
+        apiCache[cacheKey] = {
+          data: processedData,
+          timestamp: Date.now(),
+        };
       }
       
-      const responseData = await response.json() as ApiResponse<T>;
-      console.log(`API Success: ${endpoint}`, responseData.status);
-      
-      // Check if the API response indicates success
-      if (responseData.status === 'success') {
-        const processedData = processResponseData(endpoint, responseData.data);
-        
-        // Cache successful GET responses
-        if (cacheEnabled && method === 'GET') {
-          const cacheKey = getCacheKey(url, options);
-          apiCache[cacheKey] = { 
-            timestamp: Date.now(),
-            data: processedData 
-          };
-          console.log(`Cached response for ${endpoint}`);
-        }
-        
-        return processedData as T;
-      } else {
-        console.error(`API returned error status: ${responseData.message}`);
-        throw new Error(responseData.message || 'API returned an error');
-      }
+      return processedData;
     } catch (error: any) {
       console.error(`API Error for ${endpoint}:`, error.message);
       
-      if (retries > 0 && !error.message?.includes('401')) {
+      // Only retry on network errors, not on API errors
+      if (retries > 0 && error.message?.includes('Failed to fetch')) {
         console.log(`Retrying API request (${retries} retries left): ${endpoint}`);
         await new Promise(resolve => setTimeout(resolve, retryDelay));
         return fetchWithRetry(retries - 1);
@@ -202,16 +201,35 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
 
 // Helper function to process response data based on endpoint
 function processResponseData(endpoint: string, data: any): any {
-  // Special case handling for endpoints that return nested data structures
-  if (endpoint.includes('/workouts/workouts') && data.workouts && Array.isArray(data.workouts)) {
-    return data.workouts;
+  // Handle formatted API responses with { status, data } structure
+  if (data && typeof data === 'object' && data.status === 'success' && data.data !== undefined) {
+    // Special case handling for endpoints that return nested data structures
+    if (endpoint.includes('/workouts/workouts') && data.data.workouts && Array.isArray(data.data.workouts)) {
+      return data.data.workouts;
+    }
+    
+    // Handle clients endpoint that returns { clients: [...] }
+    if (endpoint.includes('/clients') && !endpoint.includes('/clients/') && data.data.clients && Array.isArray(data.data.clients)) {
+      return data.data.clients;
+    }
+    
+    // For other endpoints, just return the data property
+    return data.data;
   }
   
-  // Handle clients endpoint that returns { clients: [...] }
-  if (endpoint.includes('/clients') && !endpoint.includes('/clients/') && data.clients && Array.isArray(data.clients)) {
-    return data.clients;
+  // For responses that don't follow the standard format
+  // Check for nested data structures directly
+  if (data && typeof data === 'object') {
+    if (endpoint.includes('/workouts/workouts') && data.workouts && Array.isArray(data.workouts)) {
+      return data.workouts;
+    }
+    
+    if (endpoint.includes('/clients') && !endpoint.includes('/clients/') && data.clients && Array.isArray(data.clients)) {
+      return data.clients;
+    }
   }
   
+  // Default case - return the data as is
   return data;
 }
 

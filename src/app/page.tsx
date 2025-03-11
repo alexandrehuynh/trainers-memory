@@ -4,9 +4,11 @@ import { useAuth } from '@/lib/authContext';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
+import { useTheme } from '@/lib/themeContext';
 
 export default function Home() {
   const { user, isLoading } = useAuth();
+  const { theme } = useTheme();
 
   if (isLoading) {
     return (
@@ -18,12 +20,12 @@ export default function Home() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <h1 className="text-3xl font-bold text-gray-900 mb-6">Welcome to Trainer's Memory</h1>
+      <h1 className={`text-3xl font-bold ${theme === 'light' ? 'text-gray-900' : 'text-gray-100'} mb-6`}>Welcome to Trainer's Memory</h1>
       
       {user ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card title="Clients">
-            <p className="text-gray-600 mb-4">
+            <p className={`${theme === 'light' ? 'text-gray-600' : 'text-gray-300'} mb-4`}>
               Manage your fitness clients, track their progress, and store important information.
             </p>
             <Link href="/clients">
@@ -34,7 +36,7 @@ export default function Home() {
           </Card>
           
           <Card title="Workouts">
-            <p className="text-gray-600 mb-4">
+            <p className={`${theme === 'light' ? 'text-gray-600' : 'text-gray-300'} mb-4`}>
               Create workout templates, log completed sessions, and track progress over time.
             </p>
             <Link href="/workouts">
@@ -47,10 +49,10 @@ export default function Home() {
       ) : (
         <Card>
           <div className="text-center">
-            <h2 className="text-2xl font-semibold text-gray-800 mb-4">
+            <h2 className={`text-2xl font-semibold ${theme === 'light' ? 'text-gray-800' : 'text-gray-200'} mb-4`}>
               Your Personal Fitness Trainer Assistant
             </h2>
-            <p className="text-gray-600 mb-6">
+            <p className={`${theme === 'light' ? 'text-gray-600' : 'text-gray-300'} mb-6`}>
               Trainer's Memory helps fitness professionals manage clients, track workouts, and monitor progress all in one place.
             </p>
             <Link href="/signin">

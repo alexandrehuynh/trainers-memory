@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/authContext';
+import { useTheme } from '@/lib/themeContext';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
@@ -11,6 +12,7 @@ import { Client, clientsApi } from '@/lib/apiClient';
 
 export default function ClientsPage() {
   const { user, isLoading: authLoading } = useAuth();
+  const { theme } = useTheme();
   const [clients, setClients] = useState<Client[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -119,7 +121,7 @@ export default function ClientsPage() {
     return (
       <Card>
         <div className="text-center p-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">
+          <h2 className={`text-xl font-semibold ${theme === 'light' ? 'text-gray-800' : 'text-gray-200'} mb-4`}>
             Please sign in to view clients
           </h2>
           <Link href="/signin">
@@ -133,7 +135,7 @@ export default function ClientsPage() {
   return (
     <div className="max-w-6xl mx-auto">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Clients</h1>
+        <h1 className={`text-2xl font-bold ${theme === 'light' ? 'text-gray-900' : 'text-gray-100'}`}>Clients</h1>
         <div className="flex space-x-2">
           <Button 
             variant="outline"
@@ -174,10 +176,10 @@ export default function ClientsPage() {
       ) : clients.length === 0 ? (
         <Card>
           <div className="text-center py-12">
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
+            <h3 className={`text-lg font-medium ${theme === 'light' ? 'text-gray-900' : 'text-gray-100'} mb-2`}>
               No clients yet
             </h3>
-            <p className="text-gray-500 mb-6">
+            <p className={`${theme === 'light' ? 'text-gray-500' : 'text-gray-400'} mb-6`}>
               Get started by adding your first client
             </p>
             <Link href="/clients/new">
@@ -186,58 +188,58 @@ export default function ClientsPage() {
           </div>
         </Card>
       ) : (
-        <div className="bg-white shadow-sm rounded-lg overflow-hidden">
+        <div className={`${theme === 'light' ? 'bg-white' : 'bg-gray-800'} shadow-sm rounded-lg overflow-hidden`}>
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
-              <thead className="bg-gray-50">
+              <thead className={`${theme === 'light' ? 'bg-gray-50' : 'bg-gray-700'}`}>
                 <tr>
                   <th
                     scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    className={`px-6 py-3 text-left text-xs font-medium ${theme === 'light' ? 'text-gray-500' : 'text-gray-300'} uppercase tracking-wider`}
                   >
                     Name
                   </th>
                   <th
                     scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    className={`px-6 py-3 text-left text-xs font-medium ${theme === 'light' ? 'text-gray-500' : 'text-gray-300'} uppercase tracking-wider`}
                   >
                     Email
                   </th>
                   <th
                     scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    className={`px-6 py-3 text-left text-xs font-medium ${theme === 'light' ? 'text-gray-500' : 'text-gray-300'} uppercase tracking-wider`}
                   >
                     Phone
                   </th>
                   <th
                     scope="col"
-                    className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    className={`px-6 py-3 text-left text-xs font-medium ${theme === 'light' ? 'text-gray-500' : 'text-gray-300'} uppercase tracking-wider`}
                   >
                     Added
                   </th>
                   <th
                     scope="col"
-                    className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                    className={`px-6 py-3 text-right text-xs font-medium ${theme === 'light' ? 'text-gray-500' : 'text-gray-300'} uppercase tracking-wider`}
                   >
                     Actions
                   </th>
                 </tr>
               </thead>
-              <tbody className="bg-white divide-y divide-gray-200">
+              <tbody className={`${theme === 'light' ? 'bg-white divide-y divide-gray-200' : 'bg-gray-800 divide-y divide-gray-700'}`}>
                 {clients.map((client) => (
-                  <tr key={client.id} className="hover:bg-gray-50">
+                  <tr key={client.id} className={`${theme === 'light' ? 'hover:bg-gray-50' : 'hover:bg-gray-700'}`}>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="font-medium text-gray-900">
+                      <div className={`font-medium ${theme === 'light' ? 'text-gray-900' : 'text-gray-100'}`}>
                         {client.name}
                       </div>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                    <td className={`px-6 py-4 whitespace-nowrap ${theme === 'light' ? 'text-gray-500' : 'text-gray-300'}`}>
                       {client.email}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                    <td className={`px-6 py-4 whitespace-nowrap ${theme === 'light' ? 'text-gray-500' : 'text-gray-300'}`}>
                       {client.phone || '-'}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-gray-500">
+                    <td className={`px-6 py-4 whitespace-nowrap ${theme === 'light' ? 'text-gray-500' : 'text-gray-300'}`}>
                       {new Date(client.created_at).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -262,7 +264,6 @@ export default function ClientsPage() {
         </div>
       )}
 
-      {/* Import modal */}
       {showImportModal && (
         <ImportClientsModal
           isOpen={showImportModal}

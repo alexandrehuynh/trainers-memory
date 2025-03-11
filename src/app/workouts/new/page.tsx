@@ -128,6 +128,10 @@ export default function NewWorkoutPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // If already saving, prevent double submission
+    if (isSaving) return;
+    
     setIsSaving(true);
     setError(null);
 
@@ -143,25 +147,18 @@ export default function NewWorkoutPage() {
       
       const result = await workoutsApi.create(workoutData);
       
-      // Short delay to ensure server has processed the request
-      setTimeout(() => {
-        // If we have an ID, redirect to the workout detail page
-        if (result && result.id) {
-          router.push(`/workouts/${result.id}?t=${Date.now()}`);
-        } else {
-          // If no ID (shouldn't happen), redirect to workouts list
-          router.push(`/workouts?t=${Date.now()}`);
-        }
-      }, 500);
+      // Redirect to workouts list with timestamp to force refresh
+      if (result && result.id) {
+        router.push(`/workouts/${result.id}?t=${Date.now()}`);
+      } else {
+        router.push(`/workouts?t=${Date.now()}`);
+      }
     } catch (err: any) {
       console.error('Error creating workout:', err);
       // Display a more specific error message if available
       const errorMessage = err.message || 'Failed to create workout. Please try again.';
       setError(errorMessage);
-      
-      // Keep the form visible with the error message instead of redirecting
-      // This allows the user to correct any issues and try again
-    } finally {
+      // Allow the user to try again by resetting the saving state
       setIsSaving(false);
     }
   };

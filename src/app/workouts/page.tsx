@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/authContext';
+import { useTheme } from '@/lib/themeContext';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
@@ -11,6 +12,7 @@ import { Workout, workoutsApi } from '@/lib/apiClient';
 
 export default function WorkoutsPage() {
   const { user, isLoading: authLoading } = useAuth();
+  const { theme } = useTheme();
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -144,7 +146,7 @@ export default function WorkoutsPage() {
     return (
       <Card>
         <div className="text-center p-6">
-          <h2 className="text-xl font-semibold text-gray-800 mb-4">
+          <h2 className={`text-xl font-semibold ${theme === 'light' ? 'text-gray-800' : 'text-gray-200'} mb-4`}>
             Please sign in to view workouts
           </h2>
           <Link href="/signin">
@@ -158,7 +160,7 @@ export default function WorkoutsPage() {
   return (
     <div className="max-w-6xl mx-auto">
       <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">Workouts</h1>
+        <h1 className={`text-2xl font-bold ${theme === 'light' ? 'text-gray-900' : 'text-gray-100'}`}>Workouts</h1>
         <div className="flex space-x-2">
           <Button 
             variant="outline"
@@ -199,10 +201,10 @@ export default function WorkoutsPage() {
       ) : workouts.length === 0 ? (
         <Card>
           <div className="text-center py-12">
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              No workouts recorded yet
+            <h3 className={`text-lg font-medium ${theme === 'light' ? 'text-gray-900' : 'text-gray-100'} mb-2`}>
+              No workouts yet
             </h3>
-            <p className="text-gray-500 mb-6">
+            <p className={`${theme === 'light' ? 'text-gray-500' : 'text-gray-400'} mb-6`}>
               Get started by adding your first workout
             </p>
             <Link href="/workouts/new">
@@ -218,26 +220,26 @@ export default function WorkoutsPage() {
                 <div className="flex flex-col h-full">
                   <div className="flex justify-between items-start mb-4">
                     <div>
-                      <h3 className="text-lg font-medium text-gray-900">
-                        {workout.type}
+                      <h3 className={`text-lg font-medium ${theme === 'light' ? 'text-gray-900' : 'text-gray-100'}`}>
+                        {workout.type || 'Workout'}
                       </h3>
-                      <p className="text-sm text-gray-500">
-                        {new Date(workout.date).toLocaleDateString()}
+                      <p className={`text-sm ${theme === 'light' ? 'text-gray-500' : 'text-gray-400'}`}>
+                        {new Date(workout.date || workout.created_at).toLocaleDateString()}
                       </p>
                     </div>
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${theme === 'light' ? 'bg-blue-100 text-blue-800' : 'bg-blue-900 text-blue-200'}`}>
                       {workout.duration} min
                     </span>
                   </div>
                   
                   <div className="mb-4">
-                    <p className="text-sm font-medium text-gray-700">
-                      Client: {workout.client_name}
+                    <p className={`text-sm font-medium ${theme === 'light' ? 'text-gray-700' : 'text-gray-300'}`}>
+                      Client: {workout.client_name || 'Unknown'}
                     </p>
                   </div>
                   
                   {workout.notes && (
-                    <p className="text-sm text-gray-600 line-clamp-3 mb-4">
+                    <p className={`text-sm ${theme === 'light' ? 'text-gray-600' : 'text-gray-400'} line-clamp-3 mb-4`}>
                       {workout.notes}
                     </p>
                   )}
