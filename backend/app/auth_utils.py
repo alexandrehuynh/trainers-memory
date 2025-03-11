@@ -48,7 +48,7 @@ async def get_api_key(
     
     # Return client info
     return {
-        "client_id": api_key_record.client_id,
-        "api_key_id": api_key_record.id,
-        "api_key_name": api_key_record.name
+        "client_id": api_key_record["client_id"],
+        "api_key_id": api_key_record["id"],
+        "api_key_name": api_key_record["name"]
     } 

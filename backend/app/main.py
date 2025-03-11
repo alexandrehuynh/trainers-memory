@@ -47,8 +47,10 @@ app = FastAPI(
 
 # Configure CORS
 origins = [
-    "http://localhost:3000",  # Next.js frontend
-    "http://localhost:8000",  # FastAPI backend (for docs)
+    "http://localhost:3000",     # Next.js frontend
+    "http://127.0.0.1:3000",     # Alternative localhost
+    "http://localhost:8000",     # FastAPI backend (for docs)
+    "http://127.0.0.1:8000",     # Alternative localhost
     # Add any other origins as needed
 ]
 
@@ -56,8 +58,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=86400,  # 24 hours
 )
 
 # Add API key authentication scheme

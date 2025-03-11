@@ -221,9 +221,18 @@ class AsyncAPIKeyRepository(AsyncBaseRepository[APIKey]):
     async def get_by_key(self, key: str) -> Optional[APIKey]:
         """Get an API key by its value."""
         result = await self.session.execute(
-            select(APIKey).where(APIKey.key == key, APIKey.active == True)
+            select(
+                APIKey.id,
+                APIKey.key,
+                APIKey.client_id,
+                APIKey.name,
+                APIKey.description,
+                APIKey.active,
+                APIKey.created_at,
+                APIKey.last_used_at
+            ).where(APIKey.key == key, APIKey.active == True)
         )
-        return result.scalars().first()
+        return result.mappings().first()
     
     async def get_by_client(self, client_id: UUID) -> List[APIKey]:
         """Get all API keys for a client."""
