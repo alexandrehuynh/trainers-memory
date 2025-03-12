@@ -1,115 +1,171 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
 from typing import Dict, Any, Optional, List
 from pydantic import BaseModel, Field
-from datetime import datetime, date
-from ..auth_utils import get_api_key
+from datetime import datetime, date, timedelta
+from sqlalchemy.ext.asyncio import AsyncSession
+from ..auth_utils import validate_api_key
 from ..utils.response import StandardResponse
+from ..db import get_async_db, AsyncClientRepository, AsyncWorkoutRepository
 
 # Create router
 router = APIRouter()
 
 @router.get("/business-intelligence", response_model=Dict[str, Any])
 async def get_business_intelligence(
-    start_date: date = Query(None, description="Start date for analytics period"),
-    end_date: date = Query(None, description="End date for analytics period"),
-    client_info: Dict[str, Any] = Depends(get_api_key)
+    time_period: str = Query("30d", description="Time period for analysis (7d, 30d, 90d, all)"),
+    client_info: Dict[str, Any] = Depends(validate_api_key),
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Generate business intelligence metrics and insights for fitness businesses.
+    Get business intelligence metrics and insights.
     
-    This endpoint analyzes workout and client data to provide actionable business insights.
+    Returns key metrics about your training business, including:
+    - Client acquisition and retention
+    - Workout frequency and engagement
+    - Popular exercises and training types
+    - Revenue metrics (if available)
     """
-    # This is a placeholder. In a real implementation, this would analyze actual data
+    # Convert time period to days
+    days = None
+    if time_period != "all":
+        if time_period == "7d":
+            days = 7
+        elif time_period == "30d":
+            days = 30
+        elif time_period == "90d":
+            days = 90
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid time_period. Must be one of: 7d, 30d, 90d, all"
+            )
     
-    # Mock response
-    return StandardResponse.success(
-        data={
-            "period": {
-                "start": start_date or "2023-01-01",
-                "end": end_date or "2023-04-30"
+    try:
+        # Get repositories
+        client_repo = AsyncClientRepository(db)
+        workout_repo = AsyncWorkoutRepository(db)
+        
+        # Calculate date threshold
+        date_threshold = None
+        if days:
+            date_threshold = datetime.utcnow() - timedelta(days=days)
+        
+        # Get clients
+        clients = await client_repo.get_all()
+        
+        # Count new clients in period
+        new_clients_count = 0
+        if date_threshold:
+            for client in clients:
+                if client.created_at and client.created_at >= date_threshold:
+                    new_clients_count += 1
+        
+        # Get workouts in period
+        workouts = []
+        if date_threshold:
+            # This would need to be implemented in the repository
+            workouts = await workout_repo.get_all_since_date(date_threshold)
+        else:
+            workouts = await workout_repo.get_all()
+        
+        # Calculate metrics
+        total_clients = len(clients)
+        total_workouts = len(workouts)
+        avg_workouts_per_client = total_workouts / total_clients if total_clients > 0 else 0
+        
+        # Return the analytics data
+        return StandardResponse.success(
+            data={
+                "client_metrics": {
+                    "total_clients": total_clients,
+                    "new_clients": new_clients_count,
+                    "active_clients": total_clients  # This would need more logic to determine active status
+                },
+                "workout_metrics": {
+                    "total_workouts": total_workouts,
+                    "avg_workouts_per_client": round(avg_workouts_per_client, 2),
+                    "avg_duration_minutes": 45  # Placeholder - would calculate from actual data
+                },
+                "popular_exercises": [
+                    {"name": "Bench Press", "count": 45},
+                    {"name": "Squats", "count": 40},
+                    {"name": "Deadlifts", "count": 35}
+                ],  # Placeholder - would calculate from actual data
+                "revenue_metrics": {
+                    "estimated_monthly": total_clients * 200,  # Placeholder calculation
+                    "revenue_per_client": 200  # Placeholder
+                }
             },
-            "client_metrics": {
-                "total_active_clients": 45,
-                "new_clients": 12,
-                "churned_clients": 3,
-                "retention_rate": 93.2,
-                "at_risk_clients": [
-                    {
-                        "id": "c1d2e3f4",
-                        "name": "John Doe",
-                        "risk_score": 0.78,
-                        "reason": "Missed 3 consecutive sessions"
-                    }
-                ]
-            },
-            "session_metrics": {
-                "total_sessions": 378,
-                "completion_rate": 92.5,
-                "busiest_day": "Tuesday",
-                "busiest_time": "17:00-19:00",
-                "most_popular_workout_type": "Strength Training"
-            },
-            "financial_metrics": {
-                "total_revenue": 15750,
-                "revenue_per_client": 350,
-                "highest_value_clients": [
-                    {"id": "a1b2c3d4", "name": "Jane Smith", "value": 1200}
-                ]
-            },
-            "insights": [
-                "Tuesday evening classes show 23% better retention than Monday classes",
-                "Clients who do at least one cardio session per week have 35% higher retention",
-                "Strength training sessions have the highest client satisfaction scores",
-                "Clients who receive weekly check-ins are 45% less likely to churn"
-            ],
-            "recommendations": [
-                "Consider adding more evening slots on Tuesdays and Thursdays",
-                "Implement automated weekly check-ins for clients who haven't attended in 7+ days",
-                "Promote combined strength and cardio packages for improved retention",
-                "Focus acquisition efforts on the 30-45 age demographic (highest LTV)"
-            ]
-        },
-        message="Business intelligence analysis completed successfully"
-    )
+            message="Business intelligence metrics retrieved successfully"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving business intelligence: {str(e)}"
+        )
 
 @router.get("/client-retention", response_model=Dict[str, Any])
-async def analyze_client_retention(
-    client_id: str = Query(..., description="ID of the client to analyze"),
-    client_info: Dict[str, Any] = Depends(get_api_key)
+async def get_client_retention_analytics(
+    time_period: str = Query("90d", description="Time period for analysis (30d, 90d, 180d, 365d)"),
+    client_info: Dict[str, Any] = Depends(validate_api_key),
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Analyze client retention risk and provide insights.
+    Get client retention analytics.
     
-    This endpoint uses historical patterns to predict the likelihood of client churn
-    and provides recommendations to improve retention.
+    Returns detailed metrics about client retention, including:
+    - Overall retention rate
+    - Retention by client segment
+    - Churn prediction
+    - Recommendations for improving retention
     """
-    # This is a placeholder. In a real implementation, this would analyze actual client data
+    # Convert time period to days
+    days = None
+    if time_period == "30d":
+        days = 30
+    elif time_period == "90d":
+        days = 90
+    elif time_period == "180d":
+        days = 180
+    elif time_period == "365d":
+        days = 365
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid time_period. Must be one of: 30d, 90d, 180d, 365d"
+        )
     
-    # Mock response
-    return StandardResponse.success(
-        data={
-            "client_id": client_id,
-            "retention_risk": {
-                "risk_level": "Medium",
-                "churn_probability": 0.35,
-                "predicted_timeframe": "45 days",
-                "warning_signs": [
-                    "30% decrease in session frequency over past month",
-                    "Cancelled last session",
-                    "Decreased engagement with progress tracking"
+    try:
+        # Calculate date threshold
+        date_threshold = datetime.utcnow() - timedelta(days=days)
+        
+        # This would query actual retention data in a real application
+        # For now, return placeholder data
+        return StandardResponse.success(
+            data={
+                "overall_retention": {
+                    "rate": 0.85,  # 85% retention rate
+                    "compared_to_previous": 0.05  # 5% improvement
+                },
+                "retention_by_segment": [
+                    {"segment": "New clients (< 3 months)", "rate": 0.75},
+                    {"segment": "Regular clients (3-12 months)", "rate": 0.85},
+                    {"segment": "Long-term clients (> 12 months)", "rate": 0.95}
+                ],
+                "churn_prediction": {
+                    "at_risk_clients": 3,
+                    "predicted_churn_rate": 0.15
+                },
+                "recommendations": [
+                    "Increase session frequency for new clients",
+                    "Follow up with clients who miss scheduled sessions",
+                    "Implement a referral program to increase client engagement"
                 ]
             },
-            "historical_patterns": {
-                "attendance_trend": "Declining",
-                "motivation_indicators": "Decreasing",
-                "progress_rate": "Plateaued"
-            },
-            "recommendations": [
-                "Schedule a check-in call to reassess goals",
-                "Offer a complimentary session focused on a new workout type",
-                "Share a personalized progress report highlighting achievements",
-                "Consider adjusting workout intensity if client is experiencing burnout"
-            ]
-        },
-        message="Client retention analysis completed successfully"
-    ) 
+            message="Client retention analytics retrieved successfully"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving client retention analytics: {str(e)}"
+        ) 

@@ -114,28 +114,19 @@ export default function ClientDetailPage() {
     setIsDeleting(true);
     
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/clients/${clientId}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${getJwtToken() || ''}`,
-          'X-API-Key': 'test_key_12345'
-        },
-      });
+      await clientsApi.delete(clientId);
       
-      if (!response.ok) {
-        throw new Error('Failed to delete client');
-      }
-      
-      router.push(`/clients?t=${Date.now()}`);
+      router.push('/clients');
     } catch (err) {
       console.error('Error deleting client:', err);
       setError('Failed to delete client. Please try again.');
       
-      // For demo purposes, simulate success
-      setTimeout(() => {
-        setShowDeleteConfirm(false);
-        router.push(`/clients?t=${Date.now()}`);
-      }, 1000);
+      if (process.env.NODE_ENV === 'development') {
+        setTimeout(() => {
+          setShowDeleteConfirm(false);
+          router.push('/clients');
+        }, 1000);
+      }
     } finally {
       setIsDeleting(false);
       setShowDeleteConfirm(false);

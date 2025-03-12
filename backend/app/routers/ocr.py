@@ -1,18 +1,22 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form, Body
 from typing import List, Dict, Any, Optional
 import io
 import os
 import uuid
 from datetime import datetime
 from ..ocr import OCRProcessor
-from ..auth_utils import get_api_key
+from ..auth_utils import validate_api_key
 from ..utils.response import StandardResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+from ..db import get_async_db
+import json
+import base64
+import pytesseract
+from PIL import Image
+import re
 
-router = APIRouter(
-    prefix="/transformation/ocr",
-    tags=["transformation"],
-    responses={404: {"description": "Not found"}},
-)
+# Create router - remove prefix to avoid duplication with main.py's prefix
+router = APIRouter()
 
 # OCR processor will be initialized only when needed
 ocr_processor = None
@@ -27,103 +31,111 @@ def get_ocr_processor():
 @router.post("/process", response_model=Dict[str, Any])
 async def process_workout_image(
     file: UploadFile = File(...),
-    client_id: str = Form(...),
-    client_info: Dict[str, Any] = Depends(get_api_key)
+    client_id: Optional[str] = Form(None, description="ID of the client the workout belongs to"),
+    client_info: Dict[str, Any] = Depends(validate_api_key),
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Process an image containing handwritten workout notes
+    Process an image containing workout notes and extract structured data.
     
-    This endpoint uses Optical Character Recognition (OCR) to extract workout data
-    from images of handwritten notes and converts them to structured workout records.
+    Upload an image file (JPEG, PNG) of handwritten or printed workout notes,
+    and the OCR system will extract text and attempt to structure the workout data.
     
-    Args:
-        file: The image file to process
-        client_id: ID of the client the workout belongs to
+    Returns both the raw extracted text and a structured workout object that can be further edited.
     """
+    # Check file type
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uploaded file must be an image"
+        )
+    
     try:
-        # Validate file type
-        if file.content_type not in ["image/jpeg", "image/png", "image/gif"]:
-            return StandardResponse.error(
-                message="Invalid file type. Only JPEG, PNG, and GIF images are supported.",
-                status_code=status.HTTP_400_BAD_REQUEST
-            )
-            
-        # Read image file
-        image_bytes = await file.read()
+        # Read the image file
+        contents = await file.read()
+        image = Image.open(io.BytesIO(contents))
         
-        # Process image with OCR
-        ocr_text = get_ocr_processor().process_image(image_bytes)
+        # Extract text using OCR
+        extracted_text = pytesseract.image_to_string(image)
         
-        # Extract workout data from OCR text
-        workout_records = get_ocr_processor().extract_workout_data(ocr_text, client_id)
+        # Process the text to extract workout structure
+        structured_workout = extract_workout_from_text(extracted_text)
         
-        if not workout_records:
-            return StandardResponse.success(
-                data={
-                    "ocr_text": ocr_text
-                },
-                message="No valid workout data could be extracted from the image. Please check the image quality or format."
-            )
+        # If client_id was provided, assign it to the workout
+        if client_id:
+            structured_workout["client_id"] = client_id
         
-        # In production, store workout records in database
-        # For now, just convert to Workout objects and store in memory
-        from .workouts import workouts_db, exercises_db, Workout, Exercise
-        
-        # Get client name
-        from .clients import clients_db
-        client_name = "Unknown Client"
-        if client_id in clients_db:
-            client_name = clients_db[client_id]["name"]
-        
-        # Store workout records
-        saved_workouts = []
-        for record in workout_records:
-            # Create a workout ID
-            workout_id = str(uuid.uuid4())
-            timestamp = datetime.now()
-            
-            # Process exercises
-            exercises = []
-            for exercise_data in record.get("exercises", []):
-                exercise_id = str(uuid.uuid4())
-                exercise = {
-                    "id": exercise_id,
-                    "name": exercise_data.get("exercise", "Unknown Exercise"),
-                    "sets": exercise_data.get("sets", 0),
-                    "reps": exercise_data.get("reps", 0),
-                    "weight": exercise_data.get("weight", 0),
-                    "notes": exercise_data.get("notes", "")
-                }
-                exercises.append(exercise)
-                exercises_db[exercise_id] = exercise
-            
-            # Create workout record
-            workout = {
-                "id": workout_id,
-                "client_id": client_id,
-                "client_name": client_name,
-                "date": record.get("date", datetime.now().isoformat()),
-                "type": record.get("type", "OCR Import"),
-                "duration": record.get("duration", 60),
-                "notes": f"Imported via OCR on {datetime.now().isoformat()}",
-                "exercises": exercises,
-                "created_at": timestamp
-            }
-            
-            # Save to mock database
-            workouts_db[workout_id] = workout
-            saved_workouts.append(workout)
-        
+        # Return the OCR results
         return StandardResponse.success(
             data={
-                "workouts": saved_workouts,
-                "ocr_text": ocr_text,
+                "raw_text": extracted_text,
+                "structured_workout": structured_workout,
+                "filename": file.filename
             },
-            message=f"Successfully processed {len(saved_workouts)} workout records"
+            message="Image processing completed successfully"
         )
-        
     except Exception as e:
-        return StandardResponse.error(
-            message=f"OCR processing failed: {str(e)}",
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-        ) 
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error processing image: {str(e)}"
+        )
+
+def extract_workout_from_text(text):
+    """Extract structured workout data from OCR text."""
+    
+    # Simple patterns to identify workout components
+    date_pattern = r'date:?\s*([\d/\-\.]+)'
+    workout_name_pattern = r'workout:?\s*([^\n]+)'
+    exercise_pattern = r'([a-zA-Z\s]+)[\s:]+(\d+)[\s\-xX]+(\d+)[\s@]*([\d\.]+)?'
+    
+    # Extract date
+    date_match = re.search(date_pattern, text, re.IGNORECASE)
+    date = date_match.group(1) if date_match else None
+    
+    # Extract workout name
+    name_match = re.search(workout_name_pattern, text, re.IGNORECASE)
+    workout_name = name_match.group(1).strip() if name_match else "Workout"
+    
+    # Extract exercises
+    exercise_matches = re.findall(exercise_pattern, text)
+    exercises = []
+    
+    for match in exercise_matches:
+        exercise_name = match[0].strip()
+        sets = int(match[1])
+        reps = int(match[2])
+        weight = float(match[3]) if match[3] else None
+        
+        exercise = {
+            "name": exercise_name,
+            "sets": sets,
+            "reps": reps,
+            "weight": weight,
+            "notes": ""
+        }
+        exercises.append(exercise)
+    
+    # If no structured exercises found, try to split by lines
+    if not exercises:
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        for line in lines:
+            if any(keyword in line.lower() for keyword in ['press', 'curl', 'squat', 'bench', 'row', 'pull', 'push', 'lift']):
+                exercises.append({
+                    "name": line,
+                    "sets": None,
+                    "reps": None,
+                    "weight": None,
+                    "notes": ""
+                })
+    
+    # Construct structured workout
+    structured_workout = {
+        "id": str(uuid.uuid4()),
+        "date": date,
+        "name": workout_name,
+        "exercises": exercises,
+        "notes": text,  # Store full OCR text as notes
+        "duration_minutes": None
+    }
+    
+    return structured_workout 

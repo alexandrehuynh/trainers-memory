@@ -190,6 +190,12 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
       if (resourcePath) {
         clearApiCache(`/${resourcePath}`);
         console.log(`Also cleared collection cache: /${resourcePath}`);
+        
+        // For client operations, also clear any potentially related workout caches
+        if (resourcePath === 'clients') {
+          clearApiCache('/workouts');
+          console.log('Also cleared workouts cache as it may contain client information');
+        }
       }
     }
     
@@ -440,4 +446,135 @@ export async function getOpenAIRateLimitStatus() {
   const endpoint = `/intelligence/analysis/rate-limit-status`;
   const response = await request<any>(endpoint, { cache: false });
   return response.data;
-} 
+}
+
+// Nutrition-related types and API endpoints
+export interface MealPlanRequirements {
+  goal: 'muscle_gain' | 'fat_loss' | 'maintenance' | 'performance';
+  calories_per_day: number;
+  meals_per_day: number;
+  duration_days: number;
+  dietary_preferences?: string[];
+  restrictions?: string[];
+  include_shopping_list?: boolean;
+}
+
+export interface NutritionData {
+  time_period: string;
+  daily_entries: Array<{
+    date: string;
+    meals: Array<{
+      name: string;
+      time: string;
+      foods: Array<{
+        name: string;
+        amount: string;
+        calories: number;
+        protein: number;
+        carbs: number;
+        fat: number;
+      }>;
+    }>;
+    totals: {
+      calories: number;
+      protein: number;
+      carbs: number;
+      fat: number;
+      water?: number;
+    };
+  }>;
+}
+
+export interface MealPlan {
+  client_id: string;
+  plan_name: string;
+  goal: string;
+  calories_per_day: number;
+  macronutrient_targets: {
+    protein: string;
+    carbs: string;
+    fat: string;
+  };
+  daily_plans: Array<any>; // Detailed structure omitted for brevity
+  shopping_list?: Record<string, Array<{ item: string; quantity: string }>>;
+  notes: string;
+}
+
+export interface NutritionAnalysis {
+  client_id: string;
+  time_period: string;
+  analysis_date: string;
+  nutrition_analysis: {
+    caloric_intake: {
+      average_daily: number;
+      assessment: string;
+    };
+    macronutrient_distribution: {
+      protein: {
+        average_daily: number;
+        percentage: number;
+        assessment: string;
+      };
+      carbohydrates: {
+        average_daily: number;
+        percentage: number;
+        assessment: string;
+      };
+      fat: {
+        average_daily: number;
+        percentage: number;
+        assessment: string;
+      };
+    };
+    meal_patterns: {
+      average_meals_per_day: number;
+      meal_timing: string;
+      assessment: string;
+    };
+    hydration: {
+      average_daily_water: number;
+      assessment: string;
+    };
+  };
+  recommendations: string[];
+  overall_assessment: string;
+}
+
+// Nutrition API endpoints
+export const nutritionApi = {
+  /**
+   * Generate a personalized meal plan based on client requirements
+   */
+  generateMealPlan: async (
+    clientId: string,
+    requirements: MealPlanRequirements
+  ): Promise<MealPlan> => {
+    const response = await request<MealPlan>(
+      `/nutrition/meal-plans?client_id=${clientId}`,
+      {
+        method: 'POST',
+        body: requirements,
+        cache: false,
+      }
+    );
+    return response;
+  },
+
+  /**
+   * Analyze nutrition data and provide insights
+   */
+  analyzeNutrition: async (
+    clientId: string,
+    nutritionData: NutritionData
+  ): Promise<NutritionAnalysis> => {
+    const response = await request<NutritionAnalysis>(
+      `/nutrition/nutrition-analysis?client_id=${clientId}`,
+      {
+        method: 'POST',
+        body: nutritionData,
+        cache: false,
+      }
+    );
+    return response;
+  }
+}; 

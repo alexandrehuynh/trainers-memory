@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.responses import JSONResponse
 
 # Import API key dependency and standard response
-from ..auth_utils import get_api_key, validate_api_key
+from ..auth_utils import validate_api_key
 from ..utils.response import StandardResponse
 from ..db import AsyncClientRepository, get_async_db
 
@@ -28,11 +28,21 @@ class ClientUpdate(BaseModel):
     notes: Optional[str] = Field(None, max_length=1000, example="New client interested in strength training")
 
 class Client(ClientBase):
-    id: str = Field(..., example="c1d2e3f4-g5h6-i7j8-k9l0-m1n2o3p4q5r6")
+    id: uuid.UUID
     created_at: datetime
     updated_at: Optional[datetime] = None
+    
+    class Config:
+        orm_mode = True
 
-    model_config = {"from_attributes": True}
+class ClientResponse(BaseModel):
+    id: str
+    name: str
+    email: str
+    phone: str = ""
+    notes: str = ""
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 # Create router
 router = APIRouter()
@@ -42,7 +52,7 @@ router = APIRouter()
 async def get_clients(
     skip: int = Query(0, ge=0, description="Number of clients to skip"),
     limit: int = Query(100, ge=1, le=100, description="Maximum number of clients to return"),
-    client_info: Dict[str, Any] = Depends(get_api_key),
+    client_info: Dict[str, Any] = Depends(validate_api_key),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
@@ -68,29 +78,24 @@ async def get_clients(
         })
     
     return StandardResponse.success(
-        data={
-            "clients": serialized_clients,
-            "total": len(serialized_clients),  # In a real implementation, you would get the total count from the database
-            "skip": skip,
-            "limit": limit
-        },
+        data={"clients": serialized_clients, "total": len(serialized_clients), "skip": skip, "limit": limit},
         message="Clients retrieved successfully"
     )
 
 # GET /clients/{client_id} - Get a specific client
 @router.get("/clients/{client_id}", response_model=Dict[str, Any])
 async def get_client(
-    client_id: str = Path(..., description="The ID of the client to retrieve"),
-    client_info: Dict[str, Any] = Depends(get_api_key),
+    client_id: uuid.UUID = Path(..., description="The ID of the client to retrieve"),
+    client_info: Dict[str, Any] = Depends(validate_api_key),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
     Retrieve a specific client by ID.
     
-    - **client_id**: The unique identifier of the client
+    - **client_id**: UUID of the client to retrieve
     """
     client_repo = AsyncClientRepository(db)
-    client = await client_repo.get_by_id(uuid.UUID(client_id))
+    client = await client_repo.get_by_id(client_id)
     
     if not client:
         raise HTTPException(
@@ -98,7 +103,7 @@ async def get_client(
             detail=f"Client with ID {client_id} not found"
         )
     
-    # Convert database model to dict for serialization
+    # Convert to dictionary for serialization
     client_data = {
         "id": str(client.id),
         "name": client.name,
@@ -161,62 +166,65 @@ async def create_client(
 # PUT /clients/{client_id} - Update a client
 @router.put("/clients/{client_id}", response_model=Dict[str, Any])
 async def update_client(
+    client_id: uuid.UUID,
     client_update: ClientUpdate,
-    client_id: str = Path(..., description="The ID of the client to update"),
-    client_info: Dict[str, Any] = Depends(get_api_key),
+    client_info: Dict[str, Any] = Depends(validate_api_key),
     db: AsyncSession = Depends(get_async_db)
 ):
-    """
-    Update an existing client.
-    
-    - **client_id**: The unique identifier of the client to update
-    - **client_update**: Client data to update
-    """
+    """Update a client by ID."""
     client_repo = AsyncClientRepository(db)
     
     # Check if client exists
-    client = await client_repo.get_by_id(uuid.UUID(client_id))
+    client = await client_repo.get_by_id(client_id)
     if not client:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Client with ID {client_id} not found"
         )
     
+    # Check if email is being updated to one that already exists
+    if client_update.email and client_update.email != client.email:
+        existing_client = await client_repo.get_by_email(client_update.email)
+        if existing_client and existing_client.id != client_id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Client with email {client_update.email} already exists"
+            )
+    
     # Update client
     update_data = {k: v for k, v in client_update.dict().items() if v is not None}
     update_data["updated_at"] = datetime.utcnow()
     
-    updated_client = await client_repo.update(uuid.UUID(client_id), update_data)
+    updated_client = await client_repo.update(client_id, update_data)
+    
+    # Convert to dictionary for serialization
+    client_data = {
+        "id": str(updated_client.id),
+        "name": updated_client.name,
+        "email": updated_client.email,
+        "phone": updated_client.phone or "",
+        "notes": updated_client.notes or "",
+        "created_at": updated_client.created_at.isoformat() if updated_client.created_at else None,
+        "updated_at": updated_client.updated_at.isoformat() if updated_client.updated_at else None
+    }
     
     return StandardResponse.success(
-        data={
-            "id": str(updated_client.id),
-            "name": updated_client.name,
-            "email": updated_client.email,
-            "phone": updated_client.phone,
-            "notes": updated_client.notes,
-            "created_at": updated_client.created_at.isoformat() if updated_client.created_at else None,
-            "updated_at": updated_client.updated_at.isoformat() if updated_client.updated_at else None
-        },
+        data=client_data,
         message="Client updated successfully"
     )
 
 # DELETE /clients/{client_id} - Delete a client
 @router.delete("/clients/{client_id}", response_model=Dict[str, Any])
 async def delete_client(
-    client_id: str = Path(..., description="The ID of the client to delete"),
-    client_info: Dict[str, Any] = Depends(get_api_key),
+    client_id: uuid.UUID,
+    client_info: Dict[str, Any] = Depends(validate_api_key),
     db: AsyncSession = Depends(get_async_db)
 ):
-    """
-    Delete a client.
-    
-    - **client_id**: The unique identifier of the client to delete
-    """
+    """Delete a client by ID."""
     client_repo = AsyncClientRepository(db)
     
     # Check if client exists
-    client = await client_repo.get_by_id(uuid.UUID(client_id))
+    client = await client_repo.get_by_id(client_id)
     if not client:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -224,15 +232,42 @@ async def delete_client(
         )
     
     # Delete client
-    success = await client_repo.delete(uuid.UUID(client_id))
+    await client_repo.delete(client_id)
     
-    if success:
-        return StandardResponse.success(
-            data={"id": client_id},
-            message="Client deleted successfully"
-        )
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Error deleting client"
-        )
+    return StandardResponse.success(
+        message="Client deleted successfully"
+    )
+    
+# Add a new endpoint to search clients by name
+@router.get("/clients/search-by-name", response_model=Dict[str, Any])
+async def search_clients_by_name(
+    name: str = Query(..., min_length=1, description="Name to search for"),
+    client_info: Dict[str, Any] = Depends(validate_api_key),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Search for clients by name.
+    
+    - **name**: Name or partial name to search for
+    """
+    client_repo = AsyncClientRepository(db)
+    # Add a method in AsyncClientRepository to search by name
+    clients = await client_repo.search_by_name(name)
+    
+    # Convert to serializable format
+    serialized_clients = []
+    for client in clients:
+        serialized_clients.append({
+            "id": str(client.id),
+            "name": client.name,
+            "email": client.email,
+            "phone": client.phone or "",
+            "notes": client.notes or "",
+            "created_at": client.created_at.isoformat() if client.created_at else None,
+            "updated_at": client.updated_at.isoformat() if client.updated_at else None
+        })
+    
+    return StandardResponse.success(
+        data={"clients": serialized_clients, "total": len(serialized_clients)},
+        message="Clients found successfully"
+    )

@@ -1,48 +1,85 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Body, Query, status
 from typing import Dict, Any, Optional, List
-from pydantic import BaseModel, Field
-from ..auth_utils import get_api_key
+import uuid
+from sqlalchemy.ext.asyncio import AsyncSession
+
+# Import auth and DB dependencies
+from ..auth_utils import validate_api_key  # Changed to use validate_api_key consistently
+from ..db import get_async_db, AsyncClientRepository
 from ..utils.response import StandardResponse
 
 # Create router
 router = APIRouter()
 
-class MessageGenerationRequest(BaseModel):
-    client_id: str = Field(..., example="c1d2e3f4-g5h6-i7j8-k9l0-m1n2o3p4q5r6")
-    message_type: str = Field(..., example="check_in", description="Type of message to generate (check_in, reminder, progress, follow_up)")
-    customization: Optional[str] = Field(None, example="Focus on their recent cardio improvements")
-
 @router.post("/personalized-messages", response_model=Dict[str, Any])
 async def generate_personalized_message(
-    request: MessageGenerationRequest,
-    client_info: Dict[str, Any] = Depends(get_api_key)
+    client_id: uuid.UUID = Query(..., description="Client ID to generate message for"),
+    message_type: str = Query(..., description="Type of message (reminder, motivation, progress, recommendation)"),
+    customization: Optional[str] = Body(None, description="Additional customization or context for the message"),
+    client_info: Dict[str, Any] = Depends(validate_api_key),  # Updated to use validate_api_key
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
-    Generate a personalized communication message for a client.
+    Generate a personalized message for a client.
     
-    This endpoint uses the client's workout history and preferences to create
-    personalized messages for various purposes like check-ins, reminders,
-    progress updates, etc.
+    Creates a message tailored to the client based on their workout history, goals, and progress.
+    Message types include:
+    - reminder: Reminds client of upcoming sessions or tasks
+    - motivation: Motivational message to keep client engaged
+    - progress: Highlights client's progress and achievements
+    - recommendation: Provides tailored recommendations based on client's goals and history
+    
+    The message can be further customized by providing additional context.
     """
-    # This is a placeholder. In a real implementation, this would call an LLM with client context
-    
-    # Mock response based on message type
-    if request.message_type == "check_in":
-        message = "Hi John, it's been two weeks since your last workout. I noticed you've been making great progress with your cardio routine. How are you feeling? Would you like to schedule a session this week to keep the momentum going?"
-    elif request.message_type == "reminder":
-        message = "Quick reminder about your training session tomorrow at 2 PM. Don't forget to bring your gym shoes and water bottle. Looking forward to working on your bench press technique!"
-    elif request.message_type == "progress":
-        message = "Great news, John! Looking at your data from the last 8 weeks, you've increased your squat by 45 pounds and improved your mile time by 45 seconds. This is excellent progress toward your goals. Let's discuss next steps in our session on Tuesday."
-    else:
-        message = "Hi John, I wanted to follow up on our last session. How did your recovery go? Were you able to implement the stretching routine we discussed? I'd love to hear your feedback so we can adjust our approach if needed."
-    
-    return StandardResponse.success(
-        data={
-            "message": message,
-            "variations": [
-                "Shorter version: Hi John, it's been 2 weeks. How about scheduling a session this week to continue your cardio progress?",
-                "More formal: Dear John, I hope this message finds you well. I noticed it has been two weeks since our last training session..."
-            ]
-        },
-        message="Personalized message generated successfully"
-    ) 
+    try:
+        # Get client data
+        client_repo = AsyncClientRepository(db)
+        client = await client_repo.get(client_id)
+        
+        if not client:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Client with ID {client_id} not found"
+            )
+        
+        # Validate message type
+        valid_types = ["reminder", "motivation", "progress", "recommendation"]
+        if message_type not in valid_types:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid message_type. Must be one of: {', '.join(valid_types)}"
+            )
+        
+        # This would call a more sophisticated service to generate personalized messages
+        # For now, return template-based messages
+        message_templates = {
+            "reminder": f"Hi {client.name}, just a friendly reminder about your upcoming training session. Looking forward to seeing you!",
+            "motivation": f"Great job on your recent workouts, {client.name}! Keep up the amazing work - you're making fantastic progress!",
+            "progress": f"Congratulations {client.name}! You've been consistently showing up and putting in the work. Your dedication is truly inspiring!",
+            "recommendation": f"Based on your recent workouts, {client.name}, I'd recommend focusing a bit more on recovery and mobility this week. Let me know if you need some specific exercises!"
+        }
+        
+        # Get the base message
+        message = message_templates[message_type]
+        
+        # Customize if additional context provided
+        if customization:
+            message += f" {customization}"
+        
+        return StandardResponse.success(
+            data={
+                "client_id": str(client_id),
+                "client_name": client.name,
+                "message_type": message_type,
+                "message": message,
+                "delivery_channels": ["email", "sms", "app"]  # Suggested delivery channels
+            },
+            message="Personalized message generated successfully"
+        )
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error generating personalized message: {str(e)}"
+        ) 

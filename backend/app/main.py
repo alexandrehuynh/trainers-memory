@@ -21,7 +21,7 @@ from app.auth_utils import get_api_key, validate_api_key, API_KEY_NAME
 
 # Import routers
 from app.routers import clients, workouts, intelligence, transformation, communication, analytics, coaching, content
-from app.routers import ai_analysis, ocr
+from app.routers import ai_analysis, ocr, nutrition
 
 # Load environment variables
 load_dotenv()
@@ -119,11 +119,11 @@ def custom_openapi():
         routes=app.routes,
     )
     
-    # Fix API Key security scheme to ensure it works properly in Swagger UI
+    # Add security scheme for API key
     if "components" not in openapi_schema:
         openapi_schema["components"] = {}
         
-    # Define the API Key security scheme - ensure proper configuration
+    # Define security scheme
     openapi_schema["components"]["securitySchemes"] = {
         API_KEY_NAME: {
             "type": "apiKey",
@@ -133,12 +133,20 @@ def custom_openapi():
         }
     }
     
+    # Apply security to ALL operations explicitly
+    # This ensures every endpoint requires the API key
+    if "paths" in openapi_schema:
+        for path_key, path in openapi_schema["paths"].items():
+            for operation_key, operation in path.items():
+                if "security" not in operation:
+                    operation["security"] = [{API_KEY_NAME: []}]
+    
+    # Also keep the global security definition
+    openapi_schema["security"] = [{API_KEY_NAME: []}]
+    
     # Make sure the schemas section exists
     if "schemas" not in openapi_schema["components"]:
         openapi_schema["components"]["schemas"] = {}
-    
-    # Apply security to all routes
-    openapi_schema["security"] = [{API_KEY_NAME: []}]
     
     # Add custom schema info
     openapi_schema["info"]["contact"] = {
@@ -147,22 +155,35 @@ def custom_openapi():
         "url": "https://trainersmemory.api/support",
     }
     
-    # Add usage examples and tips with markdown formatting (not HTML)
+    # Update API documentation with markdown formatting
     openapi_schema["info"]["description"] = """
-    API for personal trainers to manage clients and workouts
+## API for personal trainers to manage clients and workouts
 
-    AUTHENTICATION
-    All endpoints require an API key to be provided in the 'X-API-Key' header.
+### Authentication
+All endpoints require an API key to be provided in the `X-API-Key` header.
 
-    TESTING WITH SWAGGER UI
-    1. Click the "Authorize" button at the top
-    2. Enter your API key exactly as-is (e.g., tmk_3db7baed7f1c40bb9e39b9c512fdcf8d)
-    3. Click "Authorize" and then "Close"
-    4. Now you can test the endpoints
+#### Testing with Swagger UI
+1. Click the "Authorize" button at the top
+2. Enter your API key **exactly as-is** (e.g., `tmk_40af9844458144dc9ba5f5859c8b0f01`)
+3. Click "Authorize" and then "Close"
+4. Now you can test the endpoints
 
-    TESTING WITH CURL
-    curl -H "X-API-Key: YOUR_API_KEY" http://localhost:8000/api/v1/me
-    """
+#### Testing with cURL
+```bash
+curl -H "X-API-Key: YOUR_API_KEY" http://localhost:8000/api/v1/me
+```
+
+### Available Endpoints
+- `/api/v1/clients` - Client management
+- `/api/v1/workouts` - Workout tracking and management
+- `/api/v1/intelligence` - AI-powered analytics and insights
+- `/api/v1/transformation` - Data transformation services
+- `/api/v1/communication` - Client communication tools
+- `/api/v1/analytics` - Business analytics
+- `/api/v1/coaching` - AI coaching assistance
+- `/api/v1/content` - Content generation
+- `/api/v1/nutrition` - Meal plans and nutrition analysis
+"""
     
     app.openapi_schema = openapi_schema
     return app.openapi_schema
@@ -218,18 +239,10 @@ app.include_router(
     tags=["Content"],
 )
 
-# Add the AI Analysis router
 app.include_router(
-    ai_analysis.router,
-    prefix=f"/api/{API_VERSION}",
-    tags=["Intelligence"],
-)
-
-# Add the OCR router
-app.include_router(
-    ocr.router,
-    prefix=f"/api/{API_VERSION}",
-    tags=["Transformation"],
+    nutrition.router,
+    prefix=f"/api/{API_VERSION}/nutrition",
+    tags=["Nutrition"],
 )
 
 # Entry point

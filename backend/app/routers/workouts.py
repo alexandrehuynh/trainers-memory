@@ -6,7 +6,7 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import API key dependency and standard response
-from ..auth_utils import get_api_key
+from ..auth_utils import validate_api_key
 from ..utils.response import StandardResponse
 from ..db import (
     AsyncWorkoutRepository,
@@ -79,7 +79,7 @@ async def get_workouts(
     skip: int = Query(0, ge=0, description="Number of workouts to skip"),
     limit: int = Query(100, ge=1, le=100, description="Maximum number of workouts to return"),
     client_id: Optional[str] = Query(None, description="Filter workouts by client ID"),
-    client_info: Dict[str, Any] = Depends(get_api_key),
+    client_info: Dict[str, Any] = Depends(validate_api_key),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
@@ -153,7 +153,7 @@ async def get_workouts(
 @router.get("/{workout_id}", response_model=Dict[str, Any])
 async def get_workout(
     workout_id: str = Path(..., description="The ID of the workout to retrieve"),
-    client_info: Dict[str, Any] = Depends(get_api_key),
+    client_info: Dict[str, Any] = Depends(validate_api_key),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
@@ -212,7 +212,7 @@ async def get_workout(
 @router.post("/", status_code=status.HTTP_201_CREATED, response_model=Dict[str, Any])
 async def create_workout(
     workout: WorkoutCreate,
-    client_info: Dict[str, Any] = Depends(get_api_key),
+    client_info: Dict[str, Any] = Depends(validate_api_key),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
@@ -289,7 +289,7 @@ async def create_workout(
 async def update_workout(
     workout_update: WorkoutUpdate,
     workout_id: str = Path(..., description="The ID of the workout to update"),
-    client_info: Dict[str, Any] = Depends(get_api_key),
+    client_info: Dict[str, Any] = Depends(validate_api_key),
     db: AsyncSession = Depends(get_async_db)
 ):
     """
@@ -399,7 +399,7 @@ async def update_workout(
 @router.delete("/{workout_id}", response_model=Dict[str, Any])
 async def delete_workout(
     workout_id: str = Path(..., description="The ID of the workout to delete"),
-    client_info: Dict[str, Any] = Depends(get_api_key),
+    client_info: Dict[str, Any] = Depends(validate_api_key),
     db: AsyncSession = Depends(get_async_db)
 ):
     """

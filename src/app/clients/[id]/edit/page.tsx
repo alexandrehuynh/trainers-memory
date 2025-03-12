@@ -81,22 +81,16 @@ export default function EditClientPage() {
     setError(null);
 
     try {
-      await clientsApi.update(clientId, formData);
+      // Update the client using the API client
+      const updatedClient = await clientsApi.update(clientId, formData);
       
-      // Add a small delay before redirecting to ensure the server has processed the update
-      // and the cache has been cleared
-      setTimeout(() => {
-        // Force skip cache on the next navigation by adding a timestamp parameter
-        router.push(`/clients/${clientId}?t=${Date.now()}`);
-      }, 500); // 500ms delay
+      // Navigate back to the client page
+      router.push(`/clients/${clientId}`);
     } catch (err: any) {
       console.error('Error updating client:', err);
       // Display a more specific error message if available
       const errorMessage = err.message || 'Failed to update client. Please try again.';
       setError(errorMessage);
-      
-      // Keep the form visible with the error message instead of redirecting
-      // This allows the user to correct any issues and try again
     } finally {
       setIsSaving(false);
     }

@@ -21,29 +21,28 @@ Environment variables:
 - OPENAI_CACHE_TTL: (Optional) Cache TTL in seconds (default: 3600)
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from typing import Dict, Any, Optional, List
-# Uncomment pandas import since it's used in the code
 import pandas as pd
 # Uncomment numpy if it's actually needed elsewhere in the file
 # import numpy as np
 from openai import OpenAI
 import os
 from pydantic import BaseModel, Field
-from datetime import datetime
+from datetime import datetime, timedelta
 import time
 from collections import deque
-from ..auth_utils import get_api_key
+from ..auth_utils import validate_api_key
 from ..utils.response import StandardResponse
 from ..utils.cache.openai_cache import openai_cache
+from ..utils.cache.openai_analysis import analyze_with_openai_cached
 from ..utils.fitness_data.embedding_tools import get_rag_context
+from sqlalchemy.ext.asyncio import AsyncSession
+from ..db import get_async_db, AsyncClientRepository, AsyncWorkoutRepository
+import uuid
+from typing import Dict, Any, Optional, List
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 
-# Create router
-router = APIRouter(
-    prefix="/intelligence/analysis",
-    tags=["intelligence"],
-    responses={404: {"description": "Not found"}},
-)
+# Create router - remove prefix to avoid duplication with main.py's prefix
+router = APIRouter()
 
 # Define models if they don't exist in a central place
 class AIAnalysisRequest(BaseModel):
@@ -54,6 +53,8 @@ class AIAnalysisRequest(BaseModel):
 class AIAnalysisResponse(BaseModel):
     answer: str
     data: Optional[Dict[str, Any]] = None
+    
+    model_config = {"from_attributes": True}
 
 # For cache clearing endpoint
 class CacheClearRequest(BaseModel):
@@ -62,6 +63,8 @@ class CacheClearRequest(BaseModel):
 class CacheClearResponse(BaseModel):
     entries_cleared: int
     success: bool
+    
+    model_config = {"from_attributes": True}
 
 # Simple rate limiter for OpenAI API
 class SimpleRateLimiter:
@@ -203,7 +206,7 @@ def get_client_name(client_id: str) -> str:
 @router.post("/analyze", response_model=Dict[str, Any])
 async def analyze_client_data(
     request: AIAnalysisRequest,
-    client_info: Dict[str, Any] = Depends(get_api_key)
+    client_info: Dict[str, Any] = Depends(validate_api_key)
 ):
     """
     Analyze client workout data using natural language queries
@@ -316,7 +319,7 @@ async def analyze_client_data(
 # Add a rate limit status endpoint
 @router.get("/rate-limit-status", response_model=Dict[str, Any])
 async def get_rate_limit_status(
-    client_info: Dict[str, Any] = Depends(get_api_key)
+    client_info: Dict[str, Any] = Depends(validate_api_key)
 ):
     """Get the current status of the rate limiter"""
     # Calculate remaining capacity
@@ -351,7 +354,7 @@ async def get_rate_limit_status(
 @router.post("/clear-cache", response_model=Dict[str, Any])
 async def clear_cache(
     request: CacheClearRequest,
-    client_info: Dict[str, Any] = Depends(get_api_key)
+    client_info: Dict[str, Any] = Depends(validate_api_key)
 ):
     """Clear the OpenAI response cache, either for a specific client or all clients"""
     try:
@@ -373,4 +376,143 @@ async def clear_cache(
         return StandardResponse.error(
             message=f"Failed to clear cache: {str(e)}",
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-        ) 
+        )
+
+@router.get("/analysis/analyze", response_model=Dict[str, Any])
+async def analyze_client_data(
+    client_id: Optional[uuid.UUID] = Query(None, description="Client ID to analyze"),
+    time_period: Optional[str] = Query("30d", description="Time period to analyze (7d, 30d, 90d, all)"),
+    query: str = Query(..., min_length=5, max_length=1000, description="Analysis question or request"),
+    client_info: Dict[str, Any] = Depends(validate_api_key),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Analyze client workout data using OpenAI.
+    
+    Submit a natural language query about the client's workout history and get AI-powered analysis.
+    
+    Examples:
+    - "What exercises has this client been doing most frequently?"
+    - "Has the client been making progress on their bench press?"
+    - "What muscle groups need more attention based on their workout history?"
+    - "Suggest modifications to their routine based on their performance"
+    
+    The analysis will be cached for identical queries to reduce API costs and improve response times.
+    """
+    # Validate client exists if client_id is provided
+    if client_id:
+        client_repo = AsyncClientRepository(db)
+        client = await client_repo.get(client_id)
+        if not client:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Client with ID {client_id} not found"
+            )
+    
+    # Convert time period to days
+    days = None
+    if time_period != "all":
+        if time_period == "7d":
+            days = 7
+        elif time_period == "30d":
+            days = 30
+        elif time_period == "90d":
+            days = 90
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid time_period. Must be one of: 7d, 30d, 90d, all"
+            )
+    
+    # Get client workouts
+    workout_repo = AsyncWorkoutRepository(db)
+    
+    if client_id:
+        if days:
+            # Calculate date threshold
+            date_threshold = datetime.utcnow() - timedelta(days=days)
+            workouts = await workout_repo.get_by_client_since_date(client_id, date_threshold)
+        else:
+            workouts = await workout_repo.get_by_client(client_id)
+        
+        # Prepare client info
+        client_name = client.name if client else "Unknown Client"
+    else:
+        workouts = []
+        client_name = "All Clients"
+    
+    # Prepare the workout data for analysis
+    workout_data = []
+    for workout in workouts:
+        workout_dict = {
+            "id": str(workout.id),
+            "date": workout.date.isoformat() if workout.date else None,
+            "name": workout.name,
+            "notes": workout.notes,
+            "duration_minutes": workout.duration_minutes,
+            "exercises": workout.exercises
+        }
+        workout_data.append(workout_dict)
+    
+    # Get RAG context if available
+    rag_context = get_rag_context(query, max_tokens=1000)
+    
+    # Prepare the data for OpenAI
+    try:
+        analysis_result = await analyze_with_openai_cached(
+            client_name=client_name,
+            workout_data=workout_data,
+            query=query,
+            rag_context=rag_context
+        )
+        
+        # Return the analysis result
+        return StandardResponse.success(
+            data={
+                "analysis": analysis_result["content"],
+                "from_cache": analysis_result.get("from_cache", False),
+                "used_rag": bool(rag_context)
+            },
+            message="Analysis completed successfully"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error analyzing client data: {str(e)}"
+        )
+
+@router.get("/analysis/rate-limit-status", response_model=Dict[str, Any])
+async def get_rate_limit_status(
+    client_info: Dict[str, Any] = Depends(validate_api_key)
+):
+    """
+    Get the current rate limit status for OpenAI API usage.
+    
+    Returns information about:
+    - Current usage
+    - Rate limits
+    - Remaining tokens
+    - Reset time
+    """
+    # This would typically query a service that tracks API usage
+    # For now, return placeholder data
+    return StandardResponse.success(
+        data={
+            "usage": {
+                "prompt_tokens_today": 15000,
+                "completion_tokens_today": 5000,
+                "total_tokens_today": 20000
+            },
+            "limits": {
+                "tokens_per_day": 100000,
+                "tokens_per_minute": 10000
+            },
+            "remaining": {
+                "tokens_today": 80000
+            },
+            "reset": {
+                "daily_at": "00:00:00 UTC"
+            }
+        },
+        message="Rate limit status retrieved successfully"
+    ) 
