@@ -8,7 +8,7 @@ import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
 import { getJwtToken } from '@/lib/tokenHelper';
-import { Client, clientsApi } from '@/lib/apiClient';
+import { Client, clientsApi, Exercise } from '@/lib/apiClient';
 import { workoutsApi } from '@/lib/apiClient';
 import WorkoutTemplates from '@/components/WorkoutTemplates';
 
@@ -20,17 +20,10 @@ interface WorkoutFormData {
   duration: number;
   notes: string;
   exercises: Exercise[];
+  customTypeName?: string;
 }
 
-interface Exercise {
-  id: string;
-  name: string;
-  sets: number;
-  reps: number;
-  weight: number;
-  notes: string;
-}
-
+// Define WorkoutTemplate interface to match what's used in WorkoutTemplates
 interface WorkoutTemplate {
   id: string;
   name: string;
@@ -152,6 +145,12 @@ export default function NewWorkoutPage() {
     // If already saving, prevent double submission
     if (isSaving) return;
     
+    // Validate custom workout name if type is Custom
+    if (formData.type === 'Custom' && (!formData.customTypeName || formData.customTypeName.trim() === '')) {
+      setError('Please enter a name for your custom workout type');
+      return;
+    }
+    
     setIsSaving(true);
     setError(null);
 
@@ -159,10 +158,19 @@ export default function NewWorkoutPage() {
       // Find the selected client to get their name
       const selectedClient = clients.find(client => client.id === formData.client_id);
       
+      // Prepare workout data
+      let workoutType = formData.type;
+      
+      // If type is Custom and a custom name is provided, use the custom name
+      if (formData.type === 'Custom' && formData.customTypeName) {
+        workoutType = formData.customTypeName;
+      }
+      
       // Use the workoutsApi instead of direct fetch
       const workoutData = {
         ...formData,
-        client_name: selectedClient?.name || 'Unknown Client'
+        client_name: selectedClient?.name || 'Unknown Client',
+        type: workoutType
       };
       
       const result = await workoutsApi.create(workoutData);
@@ -314,6 +322,32 @@ export default function NewWorkoutPage() {
                     <option value="Recovery">Recovery</option>
                     <option value="Custom">Custom</option>
                   </select>
+                  
+                  {formData.type === 'Custom' && (
+                    <div className="mt-2">
+                      <label
+                        htmlFor="customType"
+                        className="block text-sm font-medium text-gray-700 mb-1"
+                      >
+                        Custom Workout Name
+                      </label>
+                      <input
+                        type="text"
+                        id="customType"
+                        className="w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Enter custom workout name"
+                        value={formData.customTypeName || ''}
+                        onChange={(e) => {
+                          const customName = e.target.value;
+                          setFormData((prev) => ({
+                            ...prev,
+                            customTypeName: customName
+                          }));
+                        }}
+                        required
+                      />
+                    </div>
+                  )}
                 </div>
 
                 <Input

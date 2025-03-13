@@ -280,8 +280,7 @@ async def create_workout(
     
     return StandardResponse.success(
         data=response_data,
-        message="Workout created successfully",
-        status_code=status.HTTP_201_CREATED
+        message="Workout created successfully"
     )
 
 # PUT /workouts/{workout_id} - Update a workout
