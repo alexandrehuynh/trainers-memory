@@ -7,6 +7,10 @@ for use in the vector database and RAG system.
 
 import os
 from typing import Dict, List, Any, Optional
+import numpy as np
+import torch
+from sentence_transformers import SentenceTransformer, InputExample, losses
+from torch.utils.data import DataLoader
 from ..vectordb import get_vectordb
 from .knowledge_base import load_fitness_knowledge
 
@@ -216,4 +220,108 @@ def get_rag_context(query: str, max_tokens: int = 1000) -> str:
     if len(context) > max_tokens * 4:  # Assuming ~4 chars per token
         context = context[:max_tokens * 4] + "...[truncated]"
     
-    return context 
+    return context
+
+def train_fitness_domain_embedding(output_model_name: str = "fitness-domain-v1", 
+                                  base_model: str = "all-MiniLM-L6-v2",
+                                  epochs: int = 10,
+                                  batch_size: int = 16,
+                                  learning_rate: float = 2e-5) -> str:
+    """
+    Fine-tune a sentence transformer model on fitness domain data to create
+    specialized fitness embeddings.
+    
+    Args:
+        output_model_name: Name for the saved model
+        base_model: Base model to fine-tune
+        epochs: Number of training epochs
+        batch_size: Training batch size
+        learning_rate: Learning rate for training
+        
+    Returns:
+        Path to the saved model
+    """
+    # Load fitness knowledge
+    knowledge = load_fitness_knowledge()
+    
+    # Create training data from exercises
+    training_examples = []
+    
+    # Exercise pairs (similar exercises should have similar embeddings)
+    for i, exercise1 in enumerate(knowledge["exercises"]):
+        # Create positive pairs (same muscle groups)
+        for j, exercise2 in enumerate(knowledge["exercises"]):
+            if i != j:
+                # Check if they share primary muscles
+                common_muscles = set(exercise1["primary_muscles"]).intersection(set(exercise2["primary_muscles"]))
+                if common_muscles:
+                    similarity = len(common_muscles) / max(len(exercise1["primary_muscles"]), len(exercise2["primary_muscles"]))
+                    if similarity > 0.5:  # Only use exercises with significant muscle overlap
+                        # Create a training example with the exercise descriptions
+                        training_examples.append(InputExample(
+                            texts=[
+                                f"Exercise: {exercise1['name']}. {exercise1['description']}",
+                                f"Exercise: {exercise2['name']}. {exercise2['description']}"
+                            ],
+                            label=similarity  # Use muscle overlap as a similarity score
+                        ))
+    
+    # Add terminology pairs
+    for i, term1 in enumerate(knowledge["terminology"]):
+        for j, term2 in enumerate(knowledge["terminology"]):
+            if i != j and term1["category"] == term2["category"]:
+                # Terms in the same category should be somewhat similar
+                training_examples.append(InputExample(
+                    texts=[
+                        f"{term1['term']}: {term1['definition']}",
+                        f"{term2['term']}: {term2['definition']}"
+                    ],
+                    label=0.7  # Terms in the same category are fairly similar
+                ))
+    
+    # Add training principles
+    for i, principle1 in enumerate(knowledge["principles"]):
+        for j, principle2 in enumerate(knowledge["principles"]):
+            if i != j:
+                # All training principles should have some relationship
+                training_examples.append(InputExample(
+                    texts=[
+                        f"{principle1['name']}: {principle1['description']}",
+                        f"{principle2['name']}: {principle2['description']}"
+                    ],
+                    label=0.5  # Moderate similarity for principles
+                ))
+    
+    # Load base model
+    model = SentenceTransformer(base_model)
+    
+    # Create data loader
+    train_dataloader = DataLoader(training_examples, shuffle=True, batch_size=batch_size)
+    
+    # Use cosine similarity loss
+    train_loss = losses.CosineSimilarityLoss(model)
+    
+    # Train the model
+    print(f"Training fitness domain embedding model with {len(training_examples)} examples for {epochs} epochs")
+    model.fit(
+        train_objectives=[(train_dataloader, train_loss)],
+        epochs=epochs,
+        warmup_steps=int(len(train_dataloader) * 0.1),
+        optimizer_params={'lr': learning_rate},
+        show_progress_bar=True
+    )
+    
+    # Save the model
+    output_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "models", output_model_name)
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    model.save(output_path)
+    
+    print(f"Fitness domain embedding model saved to {output_path}")
+    
+    # Update the vector database to use the new model
+    vectordb = get_vectordb(embedding_model=output_path)
+    
+    # Recreate embeddings with the new model
+    create_fitness_embeddings(force_refresh=True)
+    
+    return output_path 

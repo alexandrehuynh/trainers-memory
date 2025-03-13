@@ -10,7 +10,8 @@ This module contains structured fitness domain knowledge including:
 
 import json
 import os
-from typing import Dict, List, Any, Optional
+import random
+from typing import Dict, List, Any, Optional, Tuple
 
 # Path to knowledge base files
 KNOWLEDGE_BASE_DIR = os.path.join(os.path.dirname(__file__), "data")
@@ -401,4 +402,306 @@ def get_exercise_info(name: str) -> Optional[Dict[str, Any]]:
                 result["note"] = f"This is a variation of {exercise['name']}"
                 return result
     
-    return None 
+    return None
+
+def generate_synthetic_client_profile() -> Dict[str, Any]:
+    """Generate a synthetic client profile for training data."""
+    # Gender distribution (approximately realistic)
+    gender = random.choice(["Male", "Female", "Non-binary"])
+    
+    # Age distribution 
+    if random.random() < 0.7:  # 70% between 20-45
+        age = random.randint(20, 45)
+    elif random.random() < 0.85:  # 15% between 46-65
+        age = random.randint(46, 65)
+    else:  # 15% either 18-19 or 66-80
+        age = random.randint(18, 19) if random.random() < 0.5 else random.randint(66, 80)
+    
+    # Height distribution (in cm)
+    if gender == "Male":
+        height = int(random.normalvariate(175, 8))  # Average male height with standard deviation
+    elif gender == "Female":
+        height = int(random.normalvariate(162, 7))  # Average female height with standard deviation
+    else:
+        height = int(random.normalvariate(168, 10))  # Wide range for non-binary
+    
+    # Weight distribution (in kg)
+    if gender == "Male":
+        weight = int(random.normalvariate(80, 15))
+    elif gender == "Female":
+        weight = int(random.normalvariate(65, 13))
+    else:
+        weight = int(random.normalvariate(72, 16))
+    
+    # Fitness level
+    fitness_level = random.choice(["Beginner", "Intermediate", "Advanced", "Elite"])
+    fitness_level_weights = {"Beginner": 0.4, "Intermediate": 0.4, "Advanced": 0.15, "Elite": 0.05}
+    fitness_level = random.choices(
+        list(fitness_level_weights.keys()),
+        weights=list(fitness_level_weights.values())
+    )[0]
+    
+    # Training experience (in months)
+    if fitness_level == "Beginner":
+        experience = random.randint(0, 12)
+    elif fitness_level == "Intermediate":
+        experience = random.randint(12, 36)
+    elif fitness_level == "Advanced":
+        experience = random.randint(36, 84)
+    else:  # Elite
+        experience = random.randint(84, 240)
+    
+    # Goals (can have multiple)
+    possible_goals = [
+        "Weight loss", "Muscle gain", "Strength improvement", "Endurance building",
+        "Athletic performance", "General fitness", "Rehabilitation", "Functional fitness",
+        "Competition preparation", "Skill development"
+    ]
+    num_goals = random.randint(1, 3)
+    goals = random.sample(possible_goals, num_goals)
+    
+    # Health conditions (some may have none)
+    possible_conditions = [
+        "None", "Lower back pain", "Knee injury", "Shoulder impingement", 
+        "Hypertension", "Diabetes Type 2", "Asthma", "Arthritis",
+        "Previous ACL tear", "Rotator cuff injury"
+    ]
+    
+    has_condition = random.random() < 0.3  # 30% chance of having a condition
+    conditions = []
+    if has_condition:
+        num_conditions = random.randint(1, 2)
+        conditions = random.sample(possible_conditions[1:], num_conditions)  # Skip "None"
+    else:
+        conditions = ["None"]
+    
+    # Create the profile
+    return {
+        "id": f"synthetic-{random.randint(10000, 99999)}",
+        "gender": gender,
+        "age": age,
+        "height_cm": height,
+        "weight_kg": weight,
+        "bmi": round(weight / ((height/100) ** 2), 1),
+        "fitness_level": fitness_level,
+        "training_experience_months": experience,
+        "goals": goals,
+        "health_conditions": conditions,
+        "availability_days_per_week": random.randint(2, 6),
+        "preferred_training_style": random.choice([
+            "Strength training", "Cardio-focused", "HIIT", "Functional training", 
+            "CrossFit style", "Bodybuilding", "Sports-specific", "Balanced approach"
+        ])
+    }
+
+def generate_synthetic_workout(client_profile: Dict[str, Any], exercises: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Generate a synthetic workout based on client profile."""
+    # Determine workout type based on client goals and preferences
+    workout_type = random.choice(["Strength", "Hypertrophy", "Endurance", "HIIT", "Functional"])
+    
+    # Workout duration based on fitness level and availability
+    if client_profile["fitness_level"] in ["Advanced", "Elite"]:
+        duration_minutes = random.randint(60, 90)
+    else:
+        duration_minutes = random.randint(40, 60)
+    
+    # Number of exercises based on duration and type
+    if workout_type in ["HIIT", "Endurance"]:
+        num_exercises = random.randint(5, 8)
+    else:
+        num_exercises = random.randint(6, 10)
+    
+    # Filter exercises based on client's health conditions
+    filtered_exercises = exercises
+    if "Lower back pain" in client_profile["health_conditions"]:
+        filtered_exercises = [e for e in exercises if "Lower Back" not in e.get("contraindicated_for", [])]
+    if "Shoulder impingement" in client_profile["health_conditions"]:
+        filtered_exercises = [e for e in filtered_exercises if "Shoulder Impingement" not in e.get("contraindicated_for", [])]
+    
+    # Select exercises for the workout
+    selected_exercises = []
+    
+    # Ensure we have compound movements for beginners and intermediates
+    if client_profile["fitness_level"] in ["Beginner", "Intermediate"]:
+        compound_exercises = [e for e in filtered_exercises if e.get("category") == "Compound"]
+        if compound_exercises:
+            selected_exercises.extend(random.sample(compound_exercises, min(3, len(compound_exercises))))
+    
+    # Add remaining exercises
+    remaining_exercises = [e for e in filtered_exercises if e not in selected_exercises]
+    if remaining_exercises:
+        additional_exercises = random.sample(remaining_exercises, min(num_exercises - len(selected_exercises), len(remaining_exercises)))
+        selected_exercises.extend(additional_exercises)
+    
+    # Create workout exercises with sets, reps, weights
+    workout_exercises = []
+    for exercise in selected_exercises:
+        # Determine sets and reps based on workout type
+        if workout_type == "Strength":
+            sets = random.randint(3, 5)
+            reps = random.randint(3, 6)
+            # Weight calculation based on fitness level and exercise type
+            weight_factor = {
+                "Beginner": 0.4,
+                "Intermediate": 0.6,
+                "Advanced": 0.8,
+                "Elite": 0.9
+            }.get(client_profile["fitness_level"])
+            
+            # Base weight (arbitrary units)
+            base_weight = {
+                "Compound": 100,
+                "Isolation": 50,
+                "Bodyweight": 0
+            }.get(exercise.get("category", "Isolation"))
+            
+            weight = int(base_weight * weight_factor * (1 + random.random() * 0.2))
+            
+        elif workout_type == "Hypertrophy":
+            sets = random.randint(3, 4)
+            reps = random.randint(8, 12)
+            weight_factor = {
+                "Beginner": 0.3,
+                "Intermediate": 0.5,
+                "Advanced": 0.7,
+                "Elite": 0.85
+            }.get(client_profile["fitness_level"])
+            
+            base_weight = {
+                "Compound": 100,
+                "Isolation": 50,
+                "Bodyweight": 0
+            }.get(exercise.get("category", "Isolation"))
+            
+            weight = int(base_weight * weight_factor * (1 + random.random() * 0.2))
+            
+        elif workout_type == "Endurance":
+            sets = random.randint(2, 3)
+            reps = random.randint(15, 20)
+            weight_factor = {
+                "Beginner": 0.2,
+                "Intermediate": 0.35,
+                "Advanced": 0.5,
+                "Elite": 0.65
+            }.get(client_profile["fitness_level"])
+            
+            base_weight = {
+                "Compound": 100,
+                "Isolation": 50,
+                "Bodyweight": 0
+            }.get(exercise.get("category", "Isolation"))
+            
+            weight = int(base_weight * weight_factor * (1 + random.random() * 0.2))
+            
+        else:  # HIIT or Functional
+            sets = random.randint(3, 5)
+            reps = random.randint(10, 15)
+            weight_factor = {
+                "Beginner": 0.25,
+                "Intermediate": 0.4,
+                "Advanced": 0.6,
+                "Elite": 0.75
+            }.get(client_profile["fitness_level"])
+            
+            base_weight = {
+                "Compound": 80,
+                "Isolation": 40,
+                "Bodyweight": 0
+            }.get(exercise.get("category", "Isolation"))
+            
+            weight = int(base_weight * weight_factor * (1 + random.random() * 0.2))
+        
+        # For bodyweight exercises, set weight to 0
+        if exercise.get("equipment", []) == ["Bodyweight"] or "Bodyweight" in exercise.get("name", ""):
+            weight = 0
+        
+        # Add the exercise to the workout
+        workout_exercises.append({
+            "name": exercise["name"],
+            "sets": sets,
+            "reps": reps,
+            "weight": weight,
+            "rest_seconds": random.choice([30, 45, 60, 90, 120]),
+            "notes": random.choice([
+                "Focus on form", 
+                "Increase weight from last session", 
+                "Slow eccentric phase", 
+                "Explosive concentric",
+                "",
+                "Maintain neutral spine",
+                "Keep tension throughout the movement"
+            ]) if random.random() > 0.5 else ""
+        })
+    
+    # Generate a workout date
+    days_ago = random.randint(1, 60)  # Within the last 60 days
+    
+    # Create the complete workout
+    return {
+        "id": f"workout-{random.randint(10000, 99999)}",
+        "client_id": client_profile["id"],
+        "date": f"2023-{random.randint(1, 12):02d}-{random.randint(1, 28):02d}",
+        "duration_minutes": duration_minutes,
+        "type": workout_type,
+        "exercises": workout_exercises,
+        "notes": random.choice([
+            "Great session, client showed good progress", 
+            "Client struggled with energy levels", 
+            "Focus on increasing weights next session",
+            "Adjusted workout due to client's time constraints",
+            "Added extra mobility work due to tightness in hips",
+            "Client reported DOMS from previous session",
+            ""
+        ]) if random.random() > 0.3 else ""
+    }
+
+def generate_synthetic_training_data(num_clients: int = 20, workouts_per_client: int = 10) -> Dict[str, List[Dict[str, Any]]]:
+    """
+    Generate synthetic training data for fitness-specific scenarios.
+    
+    Args:
+        num_clients: Number of synthetic clients to generate
+        workouts_per_client: Number of workouts per client
+        
+    Returns:
+        Dictionary containing clients and workouts
+    """
+    # Load fitness knowledge for exercise information
+    knowledge = load_fitness_knowledge()
+    exercises = knowledge["exercises"]
+    
+    # Generate clients
+    clients = [generate_synthetic_client_profile() for _ in range(num_clients)]
+    
+    # Generate workouts for each client
+    all_workouts = []
+    for client in clients:
+        client_workouts = [generate_synthetic_workout(client, exercises) 
+                          for _ in range(workouts_per_client)]
+        all_workouts.extend(client_workouts)
+    
+    # Return the synthetic dataset
+    return {
+        "clients": clients,
+        "workouts": all_workouts
+    }
+
+def save_synthetic_data(data: Dict[str, List[Dict[str, Any]]], output_file: str) -> str:
+    """
+    Save synthetic training data to a JSON file.
+    
+    Args:
+        data: Synthetic data to save
+        output_file: Output file path
+        
+    Returns:
+        Path to the saved file
+    """
+    # Ensure directory exists
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
+    
+    # Save the data
+    with open(output_file, 'w') as f:
+        json.dump(data, f, indent=2)
+    
+    return output_file 

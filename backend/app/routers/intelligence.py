@@ -8,6 +8,8 @@ import uuid
 # Import API key dependency and standard response
 from ..auth_utils import validate_api_key
 from ..utils.response import StandardResponse
+# Import RAG utilities
+from ..utils.fitness_data.embedding_tools import get_rag_context, search_fitness_knowledge
 
 # Create router
 router = APIRouter()
@@ -94,6 +96,10 @@ class ClientHistoryQueryRequest(BaseModel):
 
 class ProgressionRequest(BaseModel):
     exercise: Optional[str] = Field(None, example="Bench Press")
+
+class RAGEnhancedQueryRequest(BaseModel):
+    query: str = Field(..., min_length=3, example="What exercises are best for shoulder rehab?")
+    max_context_length: int = Field(2000, description="Maximum context length to use from the fitness knowledge base")
 
 # Endpoints
 @router.post("/client-history", response_model=Dict[str, Any])
@@ -562,4 +568,74 @@ async def get_exercise_recommendations(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error generating exercise recommendations: {str(e)}"
+        )
+
+@router.post("/rag-enhanced-analysis", response_model=Dict[str, Any])
+async def rag_enhanced_analysis(
+    request: RAGEnhancedQueryRequest,
+    client_info: Dict[str, Any] = Depends(validate_api_key)
+):
+    """
+    Analyze fitness queries with RAG (Retrieval Augmented Generation) to enhance
+    responses with domain-specific knowledge.
+    
+    This endpoint retrieves relevant fitness knowledge from the vector database
+    and uses it to augment LLM responses for more accurate and detailed fitness information.
+    """
+    try:
+        # Retrieve relevant knowledge from the fitness vector database
+        rag_context = get_rag_context(request.query, max_tokens=request.max_context_length)
+        knowledge_results = search_fitness_knowledge(request.query, k=5)
+        
+        # Format the query with the RAG context
+        enhanced_prompt = f"""
+        As a professional fitness trainer, answer the following question using your expertise
+        and the provided fitness knowledge context.
+        
+        QUESTION: {request.query}
+        
+        KNOWLEDGE CONTEXT:
+        {rag_context}
+        
+        Provide a detailed, accurate response based on the knowledge provided.
+        Include specific exercise recommendations, technique advice, and safety considerations where relevant.
+        """
+        
+        # Create messages for the AI
+        messages = [
+            {"role": "system", "content": "You are an expert fitness professional with extensive knowledge of exercise science, biomechanics, and training methodologies."},
+            {"role": "user", "content": enhanced_prompt}
+        ]
+        
+        # Use the OpenAI client from the analyze_with_openai_cached function
+        from ..utils.cache.openai_analysis import analyze_with_openai_cached
+        
+        # Get the response from OpenAI
+        response = analyze_with_openai_cached(
+            messages=messages, 
+            temperature=0.2,
+            force_refresh=False
+        )
+        
+        # Return the enhanced response with metadata about the knowledge sources
+        return StandardResponse(
+            status="success",
+            message="RAG-enhanced analysis completed successfully",
+            data={
+                "analysis": response["answer"],
+                "sources": [
+                    {
+                        "category": item["metadata"]["category"],
+                        "name": item["metadata"].get("name", item["metadata"].get("title", "Unknown")),
+                        "relevance_score": item["score"]
+                    } for item in knowledge_results
+                ],
+                "context_used": True if rag_context else False
+            }
+        ).dict()
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to perform RAG-enhanced analysis: {str(e)}"
         ) 
