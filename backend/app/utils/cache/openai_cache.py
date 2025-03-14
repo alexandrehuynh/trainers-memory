@@ -40,16 +40,21 @@ class OpenAICache:
             self.enabled = False
             print("✗ Redis cache for OpenAI failed to connect - caching disabled")
     
-    def _generate_key(self, messages: List[Dict[str, str]], model: str) -> str:
+    def _generate_key(self, messages: List[Dict[str, str]], model: str, custom_key: Optional[str] = None) -> str:
         """Generate a cache key based on messages and model.
         
         Args:
             messages: List of message dictionaries to send to OpenAI
             model: The OpenAI model being used
+            custom_key: Optional custom key to use instead of generating from messages
             
         Returns:
             A string hash key for the cache
         """
+        if custom_key:
+            # If a custom key is provided, use it with a prefix
+            return f"{self.prefix}custom:{custom_key}"
+            
         # Create a deterministic representation of the messages
         content_str = json.dumps(messages, sort_keys=True)
         
@@ -60,12 +65,13 @@ class OpenAICache:
         # Return the prefixed key
         return f"{self.prefix}{cache_key}"
     
-    def get(self, messages: List[Dict[str, str]], model: str) -> Optional[Dict[str, Any]]:
+    def get(self, messages: List[Dict[str, str]], model: str, custom_key: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Retrieve a cached response if available.
         
         Args:
             messages: List of message dictionaries to send to OpenAI
             model: The OpenAI model being used
+            custom_key: Optional custom key to use instead of generating from messages
             
         Returns:
             The cached response or None if not found
@@ -73,7 +79,7 @@ class OpenAICache:
         if not self.enabled:
             return None
             
-        key = self._generate_key(messages, model)
+        key = self._generate_key(messages, model, custom_key)
         
         try:
             cached_data = self.redis.get(key)
@@ -85,7 +91,7 @@ class OpenAICache:
         
         return None
     
-    def set(self, messages: List[Dict[str, str]], model: str, response: Dict[str, Any], ttl: Optional[int] = None) -> bool:
+    def set(self, messages: List[Dict[str, str]], model: str, response: Dict[str, Any], ttl: Optional[int] = None, custom_key: Optional[str] = None) -> bool:
         """Store a response in the cache.
         
         Args:
@@ -93,6 +99,7 @@ class OpenAICache:
             model: The OpenAI model used
             response: The response to cache
             ttl: Optional time-to-live in seconds (default: 1 hour)
+            custom_key: Optional custom key to use instead of generating from messages
             
         Returns:
             True if successful, False otherwise
@@ -100,7 +107,7 @@ class OpenAICache:
         if not self.enabled:
             return False
             
-        key = self._generate_key(messages, model)
+        key = self._generate_key(messages, model, custom_key)
         ttl = ttl if ttl is not None else self.default_ttl
         
         try:

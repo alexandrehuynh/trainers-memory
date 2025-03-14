@@ -1,15 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Path, status, BackgroundTasks, Body
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 from pydantic import BaseModel, Field
 from datetime import datetime, date, timedelta
 import os
 import uuid
+from sqlalchemy.ext.asyncio import AsyncSession
 
 # Import API key dependency and standard response
 from ..auth_utils import validate_api_key
 from ..utils.response import StandardResponse
 # Import RAG utilities
 from ..utils.fitness_data.embedding_tools import get_rag_context, search_fitness_knowledge
+from ..utils.cache.openai_analysis import analyze_with_openai_cached
+from ..db.repositories import AsyncClientRepository, AsyncWorkoutRepository
+from ..db.config import get_async_db
 
 # Create router
 router = APIRouter()
@@ -93,20 +97,38 @@ class MockLLM:
 # Request models
 class ClientHistoryQueryRequest(BaseModel):
     query: str = Field(..., min_length=3, example="Show me their shoulder progress over the past 3 months")
+    force_refresh: bool = Field(False, description="Force refresh the analysis")
 
 class ProgressionRequest(BaseModel):
     exercise: Optional[str] = Field(None, example="Bench Press")
+    force_refresh: bool = Field(False, description="Force refresh the analysis")
 
 class RAGEnhancedQueryRequest(BaseModel):
     query: str = Field(..., min_length=3, example="What exercises are best for shoulder rehab?")
     max_context_length: int = Field(2000, description="Maximum context length to use from the fitness knowledge base")
+    force_refresh: bool = Field(False, description="Force refresh the analysis")
+
+class PerformanceTrendRequest(BaseModel):
+    time_period: str = Field("90d", description="Time period to analyze (30d, 60d, 90d, all)")
+    categories: List[str] = Field(default_factory=list, description="Categories to analyze (strength, cardio, flexibility, etc.)")
+    force_refresh: bool = Field(False, description="Force refresh the analysis")
+
+class RetentionRiskRequest(BaseModel):
+    factors: List[str] = Field(default_factory=list, description="Specific factors to include in risk assessment")
+    force_refresh: bool = Field(False, description="Force refresh the analysis")
+
+class ColdStartRecommendationRequest(BaseModel):
+    client_id: str = Field(..., example="c1d2e3f4-g5h6-i7j8-k9l0-m1n2o3p4q5r6")
+    client_details: Optional[Dict[str, Any]] = Field(None, description="Additional client details if needed")
+    force_refresh: bool = Field(False, description="Force refresh the recommendations")
 
 # Endpoints
 @router.post("/client-history", response_model=Dict[str, Any])
 async def analyze_client_history(
     client_id: str = Query(..., description="ID of the client to analyze"),
     request: ClientHistoryQueryRequest = None,
-    client_info: Dict[str, Any] = Depends(validate_api_key)
+    client_info: Dict[str, Any] = Depends(validate_api_key),
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
     Analyze a client's workout history using natural language processing.
@@ -120,30 +142,131 @@ async def analyze_client_history(
     - "What exercises has Sarah shown the most improvement in?"
     """
     try:
-        # Check if client exists
-        # In production, this would validate the client exists
+        # Convert string ID to UUID if needed
+        client_uuid = uuid.UUID(client_id) if not isinstance(client_id, uuid.UUID) else client_id
         
+        # Get client data from the database
+        client_repo = AsyncClientRepository(db)
+        workout_repo = AsyncWorkoutRepository(db)
+        
+        client = await client_repo.get_client(client_uuid)
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+            
         query = request.query if request else "Analyze overall progress"
         
-        # In a real implementation, this would connect to an LLM service
-        # with client workout data as context
-        response = MockLLM.analyze_client_history(client_id, query)
+        # Get client's workout history
+        workouts = await workout_repo.get_client_workouts(client_uuid)
+        if not workouts:
+            return StandardResponse.success(
+                data={
+                    "analysis": "No workout history found for this client.",
+                    "data_points": [],
+                    "recommendations": ["Start tracking workouts to get meaningful insights."]
+                },
+                message="No workout history available"
+            )
+        
+        # Format workout data for LLM
+        workout_data = []
+        for workout in workouts:
+            workout_dict = {
+                "date": workout.date.isoformat(),
+                "type": workout.workout_type,
+                "exercises": []
+            }
+            
+            # Add exercise details if available
+            if workout.exercises:
+                for exercise in workout.exercises:
+                    exercise_dict = {
+                        "name": exercise.name,
+                        "sets": exercise.sets,
+                        "reps": exercise.reps,
+                        "weight": exercise.weight,
+                        "notes": exercise.notes
+                    }
+                    workout_dict["exercises"].append(exercise_dict)
+            
+            workout_data.append(workout_dict)
+            
+        # Get fitness knowledge context related to the query
+        rag_context = get_rag_context(query, max_length=1500)
+        
+        # Prepare prompt with client data and query
+        messages = [
+            {"role": "system", "content": f"""You are an AI fitness analysis assistant. 
+             You analyze client workout history and provide insights based on the data.
+             Use the following fitness knowledge as context for your analysis: {rag_context}
+             Respond with detailed insights, data points, and actionable recommendations."""},
+            {"role": "user", "content": f"""
+             Client name: {client.name}
+             Client query: {query}
+             
+             Client workout history:
+             {workout_data}
+             
+             Please analyze this workout history and provide:
+             1. A detailed analysis addressing the query
+             2. Key data points that support your analysis
+             3. Specific, actionable recommendations for this client
+             """}
+        ]
+        
+        # Use the analyze_with_openai_cached function to get response
+        llm_response = await analyze_with_openai_cached(
+            messages=messages,
+            client_id=str(client_uuid),
+            query_key=f"client_history:{query}",
+            force_refresh=request.force_refresh if request else False
+        )
+        
+        # Process the LLM response
+        try:
+            analysis_text = llm_response.get("content", "")
+            
+            # Extract data points and recommendations
+            data_points = []
+            recommendations = []
+            
+            # Parse the response to extract structured data
+            if "data points:" in analysis_text.lower():
+                data_section = analysis_text.lower().split("data points:")[1].split("recommendations:")[0]
+                data_points = [point.strip() for point in data_section.split("-") if point.strip()]
+            
+            if "recommendations:" in analysis_text.lower():
+                rec_section = analysis_text.lower().split("recommendations:")[1]
+                recommendations = [rec.strip() for rec in rec_section.split("-") if rec.strip()]
+            
+            response = {
+                "analysis": analysis_text,
+                "data_points": data_points or [],
+                "recommendations": recommendations or []
+            }
+        except Exception as e:
+            # Fallback if parsing fails
+            response = {
+                "analysis": llm_response.get("content", "Analysis could not be generated"),
+                "data_points": [],
+                "recommendations": []
+            }
         
         return StandardResponse.success(
             data=response,
-            message="Client history analysis completed successfully"
+            message="Client history analysis completed"
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to analyze client history: {str(e)}"
+        return StandardResponse.error(
+            message=f"Error analyzing client history: {str(e)}",
+            error_code=500
         )
 
 @router.post("/progression", response_model=Dict[str, Any])
 async def analyze_progression(
     client_id: str = Query(..., description="ID of the client to analyze"),
     request: ProgressionRequest = None,
-    client_info: Dict[str, Any] = Depends(validate_api_key)
+    client_info: Dict[str, Any] = Depends(validate_api_key),
+    db: AsyncSession = Depends(get_async_db)
 ):
     """
     Analyze a client's exercise progression and provide recommendations.
@@ -154,22 +277,158 @@ async def analyze_progression(
     If no exercise is specified, an overall progression analysis is provided.
     """
     try:
-        # Check if client exists
-        # In production, this would validate the client exists
+        # Convert string ID to UUID if needed
+        client_uuid = uuid.UUID(client_id) if not isinstance(client_id, uuid.UUID) else client_id
         
+        # Get client data from the database
+        client_repo = AsyncClientRepository(db)
+        workout_repo = AsyncWorkoutRepository(db)
+        
+        client = await client_repo.get_client(client_uuid)
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+            
         exercise = request.exercise if request and request.exercise else None
         
-        # In a real implementation, this would connect to an LLM service
-        response = MockLLM.analyze_progression(client_id, exercise)
+        # Get client's workout history
+        workouts = await workout_repo.get_client_workouts(client_uuid)
+        if not workouts:
+            return StandardResponse.success(
+                data={
+                    "analysis": "No workout history found for this client.",
+                    "progression_rate": "N/A",
+                    "plateaus": [],
+                    "recommendations": ["Start tracking workouts to get progression insights."]
+                },
+                message="No workout history available"
+            )
+        
+        # Prepare workout data with exercise focus if specified
+        workout_data = []
+        for workout in sorted(workouts, key=lambda w: w.date):
+            workout_dict = {
+                "date": workout.date.isoformat(),
+                "exercises": []
+            }
+            
+            # Only include relevant exercises if a specific one was requested
+            if workout.exercises:
+                for ex in workout.exercises:
+                    if not exercise or (exercise and ex.name.lower() == exercise.lower()):
+                        exercise_dict = {
+                            "name": ex.name,
+                            "sets": ex.sets,
+                            "reps": ex.reps,
+                            "weight": ex.weight,
+                            "notes": ex.notes
+                        }
+                        workout_dict["exercises"].append(exercise_dict)
+            
+            # Only include workout if it has exercises (after filtering)
+            if workout_dict["exercises"]:
+                workout_data.append(workout_dict)
+        
+        if exercise and not any(ex["name"].lower() == exercise.lower() for w in workout_data for ex in w["exercises"]):
+            return StandardResponse.success(
+                data={
+                    "exercise": exercise,
+                    "analysis": f"No workout data found for exercise '{exercise}'.",
+                    "progression_rate": "N/A",
+                    "plateaus": [],
+                    "recommendations": [f"Start tracking '{exercise}' to get progression insights."]
+                },
+                message=f"No data for exercise '{exercise}'"
+            )
+        
+        # Get exercise-specific knowledge context
+        query = f"progression analysis for {exercise}" if exercise else "workout progression analysis"
+        rag_context = get_rag_context(query, max_length=1500)
+        
+        # Prepare the prompt for the LLM
+        messages = [
+            {"role": "system", "content": f"""You are an AI fitness progression analyst. 
+             Analyze the client's workout history and provide detailed insights on their progression.
+             Use the following fitness knowledge as context: {rag_context}
+             
+             Focus on:
+             1. Performance trends over time
+             2. Calculating progression rates (% improvement per month)
+             3. Identifying plateaus
+             4. Providing actionable recommendations to improve
+             
+             If analyzing a specific exercise, focus exclusively on that exercise's progression."""},
+            {"role": "user", "content": f"""
+             Client name: {client.name}
+             {f"Exercise to analyze: {exercise}" if exercise else "Analyze overall workout progression"}
+             
+             Workout history (chronological order):
+             {workout_data}
+             
+             Please provide:
+             1. Detailed progression analysis
+             2. Monthly progression rate (percentage improvement)
+             3. Identification of any plateaus
+             4. Specific recommendations to improve progression
+             """}
+        ]
+        
+        # Call the LLM with the prompt
+        llm_response = await analyze_with_openai_cached(
+            messages=messages,
+            client_id=str(client_uuid),
+            query_key=f"progression:{exercise or 'overall'}",
+            force_refresh=request.force_refresh if request else False
+        )
+        
+        # Process and structure the LLM response
+        try:
+            analysis_text = llm_response.get("content", "")
+            
+            # Extract structured data from the response
+            progression_rate = "Not provided"
+            plateaus = []
+            recommendations = []
+            
+            # Parse progression rate
+            if "progression rate:" in analysis_text.lower():
+                rate_section = analysis_text.lower().split("progression rate:")[1].split("\n")[0]
+                progression_rate = rate_section.strip()
+            
+            # Parse plateaus
+            if "plateaus:" in analysis_text.lower():
+                plateau_section = analysis_text.lower().split("plateaus:")[1].split("recommendations:")[0]
+                plateaus = [p.strip() for p in plateau_section.split("-") if p.strip()]
+            
+            # Parse recommendations
+            if "recommendations:" in analysis_text.lower():
+                rec_section = analysis_text.lower().split("recommendations:")[1]
+                recommendations = [r.strip() for r in rec_section.split("-") if r.strip()]
+            
+            response = {
+                "exercise": exercise,
+                "analysis": analysis_text,
+                "progression_rate": progression_rate,
+                "plateaus": plateaus or [],
+                "recommendations": recommendations or []
+            }
+        except Exception as e:
+            # Fallback if parsing fails
+            response = {
+                "exercise": exercise,
+                "analysis": llm_response.get("content", "Analysis could not be generated"),
+                "progression_rate": "Unknown",
+                "plateaus": [],
+                "recommendations": []
+            }
         
         return StandardResponse.success(
             data=response,
-            message="Progression analysis completed successfully"
+            message=f"Progression analysis completed for {exercise or 'overall'}"
         )
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to analyze progression: {str(e)}"
+        return StandardResponse.error(
+            message=f"Error analyzing progression: {str(e)}",
+            error_code=500
         )
 
 @router.get("/injury-prevention", response_model=Dict[str, Any])
@@ -607,14 +866,12 @@ async def rag_enhanced_analysis(
             {"role": "user", "content": enhanced_prompt}
         ]
         
-        # Use the OpenAI client from the analyze_with_openai_cached function
-        from ..utils.cache.openai_analysis import analyze_with_openai_cached
-        
         # Get the response from OpenAI
-        response = analyze_with_openai_cached(
+        response = await analyze_with_openai_cached(
             messages=messages, 
+            query_key=f"rag_enhanced:{request.query}",
             temperature=0.2,
-            force_refresh=False
+            force_refresh=request.force_refresh
         )
         
         # Return the enhanced response with metadata about the knowledge sources
@@ -622,7 +879,7 @@ async def rag_enhanced_analysis(
             status="success",
             message="RAG-enhanced analysis completed successfully",
             data={
-                "analysis": response["answer"],
+                "analysis": response["content"],
                 "sources": [
                     {
                         "category": item["metadata"]["category"],
@@ -638,4 +895,629 @@ async def rag_enhanced_analysis(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to perform RAG-enhanced analysis: {str(e)}"
+        )
+
+@router.post("/performance-trends", response_model=Dict[str, Any])
+async def detect_performance_trends(
+    client_id: str = Query(..., description="ID of the client to analyze"),
+    request: PerformanceTrendRequest = None,
+    client_info: Dict[str, Any] = Depends(validate_api_key),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Analyze client performance data to detect trends and patterns using AI.
+    
+    - **client_id**: The unique identifier of the client
+    - **time_period**: Time period to analyze (30d, 60d, 90d, all)
+    - **categories**: Optional specific performance categories to analyze
+    
+    This endpoint uses AI pattern recognition to identify trends in client performance data.
+    """
+    try:
+        # Convert string ID to UUID if needed
+        client_uuid = uuid.UUID(client_id) if not isinstance(client_id, uuid.UUID) else client_id
+        
+        # Set defaults if request is None
+        if request is None:
+            request = PerformanceTrendRequest()
+        
+        # Get client data from the database
+        client_repo = AsyncClientRepository(db)
+        workout_repo = AsyncWorkoutRepository(db)
+        
+        client = await client_repo.get_client(client_uuid)
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+        
+        # Calculate date range based on time_period
+        today = datetime.now().date()
+        if request.time_period == "30d":
+            start_date = today - timedelta(days=30)
+        elif request.time_period == "60d":
+            start_date = today - timedelta(days=60)
+        elif request.time_period == "90d":
+            start_date = today - timedelta(days=90)
+        else:  # 'all'
+            start_date = None
+        
+        # Get client's workout history
+        workouts = await workout_repo.get_client_workouts(
+            client_uuid, 
+            start_date=start_date if start_date else None
+        )
+        
+        if not workouts:
+            return StandardResponse.success(
+                data={
+                    "trends": [],
+                    "insights": "No workout data available for the selected time period.",
+                    "recommendations": ["Start tracking workouts to get trend analysis."]
+                },
+                message="No workout data available"
+            )
+        
+        # Organize workout data chronologically
+        workout_data = []
+        for workout in sorted(workouts, key=lambda w: w.date):
+            workout_dict = {
+                "date": workout.date.isoformat(),
+                "type": workout.workout_type,
+                "duration": workout.duration,
+                "metrics": workout.metrics if hasattr(workout, 'metrics') else {},
+                "exercises": []
+            }
+            
+            if workout.exercises:
+                for ex in workout.exercises:
+                    # Categorize exercises
+                    category = "strength"  # Default category
+                    if hasattr(ex, 'category') and ex.category:
+                        category = ex.category
+                    elif ex.name.lower() in ["running", "jogging", "cycling", "swimming", "rowing"]:
+                        category = "cardio"
+                    elif ex.name.lower() in ["yoga", "stretching", "mobility"]:
+                        category = "flexibility"
+                    
+                    # Only include categories that match the filter (if any)
+                    if not request.categories or category in request.categories:
+                        exercise_dict = {
+                            "name": ex.name,
+                            "category": category,
+                            "sets": ex.sets,
+                            "reps": ex.reps,
+                            "weight": ex.weight,
+                            "notes": ex.notes
+                        }
+                        workout_dict["exercises"].append(exercise_dict)
+            
+            # Only include workout if it has exercises (after filtering)
+            if workout_dict["exercises"]:
+                workout_data.append(workout_dict)
+        
+        # Get domain knowledge for context
+        rag_context = get_rag_context("workout performance trends pattern recognition", max_length=1500)
+        
+        # Prepare the prompt for the LLM
+        messages = [
+            {"role": "system", "content": f"""You are an AI fitness trend analyst specializing in pattern recognition.
+             Your task is to analyze workout data over time and identify significant patterns and trends.
+             Use the following fitness knowledge as context: {rag_context}
+             
+             Focus on:
+             1. Detecting meaningful patterns in performance data
+             2. Identifying correlations between workout variables
+             3. Recognizing progress trends and potential issues
+             4. Providing data-driven recommendations based on the patterns identified
+             
+             Your analysis should be detailed and insightful, with specific examples from the data."""},
+            {"role": "user", "content": f"""
+             Client name: {client.name}
+             Time period: {request.time_period}
+             Categories to analyze: {request.categories if request.categories else "All categories"}
+             
+             Workout history (chronological order):
+             {workout_data}
+             
+             Please provide:
+             1. A list of detected performance trends with confidence levels
+             2. Detailed insights explaining the patterns you've identified
+             3. Specific recommendations based on these patterns
+             4. Any potential issues or warning signs detected
+             """}
+        ]
+        
+        # Call the LLM with the prompt
+        llm_response = await analyze_with_openai_cached(
+            messages=messages,
+            client_id=str(client_uuid),
+            query_key=f"trends:{request.time_period}:{'-'.join(request.categories) if request.categories else 'all'}",
+            force_refresh=request.force_refresh
+        )
+        
+        # Process and structure the LLM response
+        try:
+            analysis_text = llm_response.get("content", "")
+            
+            # Extract structured data
+            trends = []
+            insights = ""
+            recommendations = []
+            warnings = []
+            
+            # Parse trends
+            if "trends:" in analysis_text.lower():
+                trend_section = analysis_text.lower().split("trends:")[1].split("insights:")[0]
+                trend_items = [t.strip() for t in trend_section.split("-") if t.strip()]
+                
+                for trend in trend_items:
+                    trend_obj = {
+                        "description": trend,
+                        "confidence": "medium"  # Default confidence
+                    }
+                    
+                    # Try to extract confidence level if provided
+                    if "confidence:" in trend.lower():
+                        trend_parts = trend.lower().split("confidence:")
+                        trend_obj["description"] = trend_parts[0].strip()
+                        trend_obj["confidence"] = trend_parts[1].strip()
+                    
+                    trends.append(trend_obj)
+            
+            # Parse insights
+            if "insights:" in analysis_text.lower():
+                insight_section = analysis_text.lower().split("insights:")[1].split("recommendations:")[0]
+                insights = insight_section.strip()
+            
+            # Parse recommendations
+            if "recommendations:" in analysis_text.lower():
+                rec_parts = analysis_text.lower().split("recommendations:")[1]
+                rec_section = rec_parts.split("warnings:")[0] if "warnings:" in rec_parts else rec_parts
+                recommendations = [r.strip() for r in rec_section.split("-") if r.strip()]
+            
+            # Parse warnings
+            if "warnings:" in analysis_text.lower():
+                warning_section = analysis_text.lower().split("warnings:")[1]
+                warnings = [w.strip() for w in warning_section.split("-") if w.strip()]
+            
+            response = {
+                "trends": trends,
+                "insights": insights,
+                "recommendations": recommendations,
+                "warnings": warnings
+            }
+        except Exception as e:
+            # Fallback if parsing fails
+            response = {
+                "trends": [],
+                "insights": llm_response.get("content", "Analysis could not be generated"),
+                "recommendations": [],
+                "warnings": []
+            }
+        
+        return StandardResponse.success(
+            data=response,
+            message="Performance trend analysis completed"
+        )
+    except Exception as e:
+        return StandardResponse.error(
+            message=f"Error analyzing performance trends: {str(e)}",
+            error_code=500
+        )
+
+@router.post("/retention-risk", response_model=Dict[str, Any])
+async def assess_retention_risk(
+    client_id: str = Query(..., description="ID of the client to analyze"),
+    request: RetentionRiskRequest = None,
+    client_info: Dict[str, Any] = Depends(validate_api_key),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Assess the risk of client churn/attrition and provide retention strategies.
+    
+    - **client_id**: The unique identifier of the client
+    - **factors**: Optional specific factors to include in the risk assessment
+    
+    This endpoint analyzes client engagement, attendance, progress, and other factors to estimate retention risk.
+    """
+    try:
+        # Convert string ID to UUID if needed
+        client_uuid = uuid.UUID(client_id) if not isinstance(client_id, uuid.UUID) else client_id
+        
+        # Set defaults if request is None
+        if request is None:
+            request = RetentionRiskRequest()
+        
+        # Initialize repositories
+        client_repo = AsyncClientRepository(db)
+        workout_repo = AsyncWorkoutRepository(db)
+        
+        # Get client data
+        client = await client_repo.get_client(client_uuid)
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+        
+        # Get client's workout history
+        workouts = await workout_repo.get_client_workouts(client_uuid)
+        
+        # Calculate key metrics
+        total_workouts = len(workouts) if workouts else 0
+        
+        # Attendance patterns
+        if workouts:
+            # Sort workouts by date
+            sorted_workouts = sorted(workouts, key=lambda w: w.date)
+            
+            # Calculate days since last workout
+            last_workout_date = sorted_workouts[-1].date if sorted_workouts else None
+            days_since_last_workout = (datetime.now().date() - last_workout_date).days if last_workout_date else None
+            
+            # Calculate average frequency (days between workouts)
+            if len(sorted_workouts) >= 2:
+                date_diffs = []
+                for i in range(1, len(sorted_workouts)):
+                    date_diff = (sorted_workouts[i].date - sorted_workouts[i-1].date).days
+                    date_diffs.append(date_diff)
+                avg_frequency = sum(date_diffs) / len(date_diffs) if date_diffs else None
+            else:
+                avg_frequency = None
+            
+            # Check for declining frequency
+            declining_frequency = False
+            if len(sorted_workouts) >= 6:
+                # Compare first half vs second half frequency
+                midpoint = len(sorted_workouts) // 2
+                first_half = sorted_workouts[:midpoint]
+                second_half = sorted_workouts[midpoint:]
+                
+                # Calculate frequencies for each half
+                first_half_dates = [w.date for w in first_half]
+                second_half_dates = [w.date for w in second_half]
+                
+                if len(first_half_dates) >= 2 and len(second_half_dates) >= 2:
+                    first_half_range = (first_half_dates[-1] - first_half_dates[0]).days
+                    second_half_range = (second_half_dates[-1] - second_half_dates[0]).days
+                    
+                    first_half_freq = first_half_range / (len(first_half) - 1) if len(first_half) > 1 else None
+                    second_half_freq = second_half_range / (len(second_half) - 1) if len(second_half) > 1 else None
+                    
+                    # Higher number means more days between workouts (less frequent)
+                    declining_frequency = second_half_freq > (first_half_freq * 1.25) if first_half_freq and second_half_freq else False
+        else:
+            last_workout_date = None
+            days_since_last_workout = None
+            avg_frequency = None
+            declining_frequency = False
+        
+        # Prepare data for LLM analysis
+        client_data = {
+            "name": client.name,
+            "email": client.email if hasattr(client, 'email') else None,
+            "join_date": client.created_at.date().isoformat() if hasattr(client, 'created_at') else None,
+            "total_workouts": total_workouts,
+            "last_workout_date": last_workout_date.isoformat() if last_workout_date else None,
+            "days_since_last_workout": days_since_last_workout,
+            "avg_days_between_workouts": avg_frequency,
+            "declining_frequency": declining_frequency,
+            "cancellation_history": client.cancellation_history if hasattr(client, 'cancellation_history') else None,
+            "no_show_count": client.no_show_count if hasattr(client, 'no_show_count') else 0,
+            "preferred_workout_times": client.preferred_workout_times if hasattr(client, 'preferred_workout_times') else None,
+            "goal_achievement": client.goal_achievement if hasattr(client, 'goal_achievement') else None,
+            "satisfaction_scores": client.satisfaction_scores if hasattr(client, 'satisfaction_scores') else None
+        }
+        
+        # Get domain knowledge for context
+        rag_context = get_rag_context("client retention fitness industry", max_length=1500)
+        
+        # Prepare the prompt for the LLM
+        messages = [
+            {"role": "system", "content": f"""You are an AI specialist in fitness client retention analysis.
+             Your task is to assess a client's risk of cancellation or churn, and provide strategies to improve retention.
+             Use the following fitness industry knowledge as context: {rag_context}
+             
+             Focus on:
+             1. Identifying early warning signs of potential client churn
+             2. Calculating a retention risk score from 1-10 (10 being highest risk)
+             3. Analyzing attendance patterns, engagement metrics, and satisfaction indicators
+             4. Providing actionable retention strategies based on the client's specific situation
+             
+             Your analysis should be data-driven and include both qualitative and quantitative elements."""},
+            {"role": "user", "content": f"""
+             Client data:
+             {client_data}
+             
+             Analyze this client's retention risk based on the provided data.
+             Factors to focus on: {request.factors if request.factors else "All relevant factors"}
+             
+             Please provide:
+             1. An overall retention risk score (1-10)
+             2. Key risk factors identified
+             3. Early warning signs detected
+             4. Specific, actionable retention strategies
+             5. Recommended communication approach
+             """}
+        ]
+        
+        # Call the LLM with the prompt
+        llm_response = await analyze_with_openai_cached(
+            messages=messages,
+            client_id=str(client_uuid),
+            query_key=f"retention_risk:{'-'.join(request.factors) if request.factors else 'all'}",
+            force_refresh=request.force_refresh
+        )
+        
+        # Process and structure the LLM response
+        try:
+            analysis_text = llm_response.get("content", "")
+            
+            # Extract structured data
+            risk_score = None
+            risk_factors = []
+            warning_signs = []
+            retention_strategies = []
+            communication_approach = ""
+            
+            # Parse risk score
+            if "risk score:" in analysis_text.lower():
+                score_text = analysis_text.lower().split("risk score:")[1].split("\n")[0].strip()
+                # Try to extract the numeric score
+                for word in score_text.split():
+                    if word.isdigit() and 1 <= int(word) <= 10:
+                        risk_score = int(word)
+                        break
+                if risk_score is None and "/10" in score_text:
+                    # Try another pattern like "8/10"
+                    score_match = score_text.split("/10")[0].strip().split()[-1]
+                    if score_match.isdigit():
+                        risk_score = int(score_match)
+            
+            # Default score if parsing fails
+            if risk_score is None:
+                risk_score = 5  # Medium risk as default
+            
+            # Parse risk factors
+            if "risk factors:" in analysis_text.lower():
+                factor_section = analysis_text.lower().split("risk factors:")[1].split("warning signs:")[0] \
+                    if "warning signs:" in analysis_text.lower() else \
+                    analysis_text.lower().split("risk factors:")[1].split("retention strategies:")[0]
+                risk_factors = [f.strip() for f in factor_section.split("-") if f.strip()]
+            
+            # Parse warning signs
+            if "warning signs:" in analysis_text.lower():
+                warning_section = analysis_text.lower().split("warning signs:")[1].split("retention strategies:")[0]
+                warning_signs = [w.strip() for w in warning_section.split("-") if w.strip()]
+            
+            # Parse retention strategies
+            if "retention strategies:" in analysis_text.lower():
+                strategy_section = analysis_text.lower().split("retention strategies:")[1].split("communication approach:")[0] \
+                    if "communication approach:" in analysis_text.lower() else \
+                    analysis_text.lower().split("retention strategies:")[1]
+                retention_strategies = [s.strip() for s in strategy_section.split("-") if s.strip()]
+            
+            # Parse communication approach
+            if "communication approach:" in analysis_text.lower():
+                comm_section = analysis_text.lower().split("communication approach:")[1]
+                communication_approach = comm_section.strip()
+            
+            response = {
+                "risk_score": risk_score,
+                "risk_level": "High" if risk_score >= 7 else "Medium" if risk_score >= 4 else "Low",
+                "risk_factors": risk_factors,
+                "warning_signs": warning_signs,
+                "retention_strategies": retention_strategies,
+                "communication_approach": communication_approach,
+                "analysis": analysis_text
+            }
+        except Exception as e:
+            # Fallback if parsing fails
+            response = {
+                "risk_score": 5,
+                "risk_level": "Medium",
+                "risk_factors": [],
+                "warning_signs": [],
+                "retention_strategies": [],
+                "communication_approach": "",
+                "analysis": llm_response.get("content", "Analysis could not be generated")
+            }
+        
+        return StandardResponse.success(
+            data=response,
+            message="Retention risk assessment completed"
+        )
+    except Exception as e:
+        return StandardResponse.error(
+            message=f"Error assessing retention risk: {str(e)}",
+            error_code=500
+        )
+
+@router.post("/cold-start-recommendations", response_model=Dict[str, Any])
+async def get_cold_start_recommendations(
+    request: ColdStartRecommendationRequest,
+    client_info: Dict[str, Any] = Depends(validate_api_key),
+    db: AsyncSession = Depends(get_async_db)
+):
+    """
+    Generate personalized workout and nutrition recommendations for new clients with limited or no history.
+    
+    - **client_id**: The unique identifier of the client
+    - **client_details**: Optional additional client details to enhance recommendations
+    
+    This endpoint uses a combination of basic client information, fitness domain knowledge,
+    and collaborative filtering concepts to provide relevant startup recommendations.
+    """
+    try:
+        # Convert string ID to UUID if needed
+        client_uuid = uuid.UUID(request.client_id) if not isinstance(request.client_id, uuid.UUID) else request.client_id
+        
+        # Initialize repositories
+        client_repo = AsyncClientRepository(db)
+        workout_repo = AsyncWorkoutRepository(db)
+        
+        # Get client data
+        client = await client_repo.get_client(client_uuid)
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+        
+        # Get client's workout history (if any)
+        workouts = await workout_repo.get_client_workouts(client_uuid)
+        
+        # Check if this is truly a cold start scenario
+        is_cold_start = len(workouts) <= 3  # Consider 3 or fewer workouts as cold start
+        
+        if not is_cold_start:
+            return StandardResponse.success(
+                data={
+                    "message": "Client has sufficient workout history for regular recommendations.",
+                    "workout_count": len(workouts),
+                    "recommendation_type": "history_based"
+                },
+                message="Client has workout history"
+            )
+        
+        # Prepare client profile data
+        client_profile = {
+            "name": client.name,
+            "age": client.age if hasattr(client, 'age') else None,
+            "gender": client.gender if hasattr(client, 'gender') else None,
+            "height": client.height if hasattr(client, 'height') else None,
+            "weight": client.weight if hasattr(client, 'weight') else None,
+            "fitness_level": client.fitness_level if hasattr(client, 'fitness_level') else None,
+            "goals": client.goals if hasattr(client, 'goals') else None,
+            "medical_conditions": client.medical_conditions if hasattr(client, 'medical_conditions') else None,
+            "workout_history": [
+                {
+                    "date": w.date.isoformat(),
+                    "type": w.workout_type,
+                    "exercises": [{"name": e.name, "sets": e.sets, "reps": e.reps} for e in w.exercises] if hasattr(w, 'exercises') else []
+                } for w in workouts
+            ],
+            # Add any additional details provided in the request
+            **(request.client_details or {})
+        }
+        
+        # Get exercise recommendations from third-party databases
+        # Use mock data for now, will be replaced with real API calls
+        from ..utils.fitness_data.third_party_integration import MockFitnessAPI
+        mock_api = MockFitnessAPI()
+        
+        # Get beginner exercises for different muscle groups
+        chest_exercises = await mock_api.get_exercises_by_muscle("chest")
+        back_exercises = await mock_api.get_exercises_by_muscle("back")
+        leg_exercises = await mock_api.get_exercises_by_muscle("legs")
+        
+        # Combine exercises from different sources for a varied recommendation
+        available_exercises = chest_exercises + back_exercises + leg_exercises
+        
+        # Get domain knowledge for context
+        rag_context = get_rag_context("beginner workout programming new client recommendations", max_length=1500)
+        
+        # Prepare the prompt for the LLM
+        messages = [
+            {"role": "system", "content": f"""You are an AI fitness and nutrition advisor specializing in creating 
+             recommendations for new clients with limited or no workout history.
+             Use the following fitness knowledge as context: {rag_context}
+             
+             Focus on:
+             1. Creating appropriate beginner-friendly workout routines
+             2. Suggesting nutrition guidelines based on client goals
+             3. Providing progressive plans that can adapt as the client improves
+             4. Considering any medical conditions or limitations
+             
+             Your recommendations should be evidence-based, safe, and tailored to the client's profile."""},
+            {"role": "user", "content": f"""
+             I need personalized workout and nutrition recommendations for a new client with limited history.
+             
+             Client profile:
+             {client_profile}
+             
+             Available exercises from database:
+             {available_exercises[:15]}  # Limit to 15 exercises for prompt size
+             
+             Please provide:
+             1. A complete 4-week starter workout program with specific exercises, sets, reps
+             2. Nutrition guidelines and meal planning suggestions
+             3. Supplementary activities to enhance results
+             4. Key metrics to track progress
+             5. Adaptation strategy as the client progresses
+             """}
+        ]
+        
+        # Call the LLM with the prompt
+        llm_response = await analyze_with_openai_cached(
+            messages=messages,
+            client_id=str(client_uuid),
+            query_key="cold_start_recommendations",
+            force_refresh=request.force_refresh
+        )
+        
+        # Process the LLM response
+        try:
+            recommendations_text = llm_response.get("content", "")
+            
+            # Extract structured data sections
+            workout_program = ""
+            nutrition_guidelines = ""
+            supplementary_activities = ""
+            tracking_metrics = ""
+            adaptation_strategy = ""
+            
+            # Parse workout program
+            if "workout program:" in recommendations_text.lower():
+                workout_section = recommendations_text.lower().split("workout program:")[1]
+                if "nutrition guidelines:" in workout_section:
+                    workout_program = workout_section.split("nutrition guidelines:")[0].strip()
+                else:
+                    workout_program = workout_section.split("\n\n")[0].strip()
+            
+            # Parse nutrition guidelines
+            if "nutrition guidelines:" in recommendations_text.lower():
+                nutrition_section = recommendations_text.lower().split("nutrition guidelines:")[1]
+                if "supplementary activities:" in nutrition_section:
+                    nutrition_guidelines = nutrition_section.split("supplementary activities:")[0].strip()
+                else:
+                    nutrition_guidelines = nutrition_section.split("\n\n")[0].strip()
+            
+            # Parse supplementary activities
+            if "supplementary activities:" in recommendations_text.lower():
+                activities_section = recommendations_text.lower().split("supplementary activities:")[1]
+                if "tracking metrics:" in activities_section:
+                    supplementary_activities = activities_section.split("tracking metrics:")[0].strip()
+                else:
+                    supplementary_activities = activities_section.split("\n\n")[0].strip()
+            
+            # Parse tracking metrics
+            if "tracking metrics:" in recommendations_text.lower():
+                metrics_section = recommendations_text.lower().split("tracking metrics:")[1]
+                if "adaptation strategy:" in metrics_section:
+                    tracking_metrics = metrics_section.split("adaptation strategy:")[0].strip()
+                else:
+                    tracking_metrics = metrics_section.split("\n\n")[0].strip()
+            
+            # Parse adaptation strategy
+            if "adaptation strategy:" in recommendations_text.lower():
+                adaptation_strategy = recommendations_text.lower().split("adaptation strategy:")[1].strip()
+            
+            response = {
+                "workout_program": workout_program,
+                "nutrition_guidelines": nutrition_guidelines,
+                "supplementary_activities": supplementary_activities,
+                "tracking_metrics": tracking_metrics,
+                "adaptation_strategy": adaptation_strategy,
+                "recommendation_type": "cold_start",
+                "full_recommendations": recommendations_text
+            }
+        except Exception as e:
+            # Fallback if parsing fails
+            response = {
+                "recommendation_type": "cold_start",
+                "full_recommendations": llm_response.get("content", "Recommendations could not be generated")
+            }
+        
+        return StandardResponse.success(
+            data=response,
+            message="Cold start recommendations generated successfully"
+        )
+    except Exception as e:
+        return StandardResponse.error(
+            message=f"Error generating cold start recommendations: {str(e)}",
+            error_code=500
         ) 

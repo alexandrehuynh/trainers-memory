@@ -13,15 +13,24 @@ from datetime import datetime
 from openai import AsyncOpenAI
 from .openai_cache import openai_cache
 
-async def analyze_with_openai_cached(client_name: str, workout_data: List[Dict], query: str, rag_context: str = "") -> Dict[str, Any]:
+async def analyze_with_openai_cached(
+    messages: List[Dict[str, str]], 
+    client_id: str = None, 
+    query_key: str = None, 
+    force_refresh: bool = False,
+    temperature: float = 0.1,
+    max_tokens: int = 500
+) -> Dict[str, Any]:
     """
-    Analyze client workout data using OpenAI with caching.
+    Analyze data using OpenAI with caching.
     
     Args:
-        client_name: The name of the client
-        workout_data: List of workout dictionaries
-        query: The analysis query
-        rag_context: Optional RAG context to include
+        messages: List of message dictionaries for the OpenAI API
+        client_id: Optional client ID for cache key
+        query_key: Optional query key for cache key
+        force_refresh: Whether to force a refresh (ignore cache)
+        temperature: Temperature for the OpenAI API call
+        max_tokens: Maximum tokens for the response
         
     Returns:
         Dictionary with analysis result
@@ -38,18 +47,11 @@ async def analyze_with_openai_cached(client_name: str, workout_data: List[Dict],
     # Get the preferred model
     model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     
-    # Prepare the messages
-    messages = [
-        {"role": "system", "content": "You are a fitness analysis assistant that helps trainers understand their clients' workout data. Provide concise, actionable insights."},
-        {"role": "system", "content": f"Here is some relevant fitness knowledge to help you provide accurate information:\n\n{rag_context}"},
-        {"role": "user", "content": f"Analyze the following workout data for client {client_name}. Question: {query}"},
-        {"role": "system", "content": f"Here's the workout data: {json.dumps(workout_data)}"}
-    ]
-    
     # Try to get from cache
     cached_response = None
-    if openai_cache.enabled:
-        cached_response = openai_cache.get(messages, model)
+    if openai_cache.enabled and not force_refresh:
+        cache_key = f"{client_id}:{query_key}" if client_id and query_key else None
+        cached_response = openai_cache.get(messages, model, custom_key=cache_key)
     
     if cached_response:
         # Format the cached response
@@ -63,8 +65,8 @@ async def analyze_with_openai_cached(client_name: str, workout_data: List[Dict],
         response = await client.chat.completions.create(
             model=model,
             messages=messages,
-            temperature=0.1,
-            max_tokens=500,
+            temperature=temperature,
+            max_tokens=max_tokens,
         )
         
         # Get the result
@@ -89,7 +91,8 @@ async def analyze_with_openai_cached(client_name: str, workout_data: List[Dict],
                 "created": int(datetime.now().timestamp()),
                 "cached": True
             }
-            openai_cache.set(messages, model, cacheable_response)
+            cache_key = f"{client_id}:{query_key}" if client_id and query_key else None
+            openai_cache.set(messages, model, cacheable_response, custom_key=cache_key)
         
         return result
     except Exception as e:
