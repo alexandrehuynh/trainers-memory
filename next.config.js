@@ -30,7 +30,7 @@ const nextConfig = {
       os: false,
     };
 
-    // Ensure proper module extensions are recognized
+    // Ensure proper extensions are recognized
     config.resolve.extensions = [
       '.js', '.jsx', '.ts', '.tsx', '.json', '.mjs', '.cjs',
       ...(config.resolve.extensions || [])
@@ -38,7 +38,7 @@ const nextConfig = {
     
     return config;
   },
-  // Ensure Next.js uses the src directory
+  // Ensure Next.js knows about the source directory
   distDir: '.next',
   reactStrictMode: true,
 };
