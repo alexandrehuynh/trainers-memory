@@ -3,7 +3,8 @@ services:
     name: trainers-memory
     env: python
     buildCommand: ./build.sh
-    startCommand: python server.py
+    startCommand: ./start_with_warmup.sh
+    healthCheckPath: /health
     envVars:
       - key: PORT
         value: 10000

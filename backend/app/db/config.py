@@ -7,7 +7,7 @@ providing both synchronous and asynchronous access patterns.
 
 import os
 from typing import AsyncGenerator, Generator
-from sqlalchemy import create_engine, MetaData
+from sqlalchemy import create_engine, MetaData, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, Session
@@ -113,26 +113,44 @@ async def connect_to_db():
     """Connect to database on app startup."""
     print("Connecting to PostgreSQL database...")
     
-    try:
-        # Test connection by making a simple query
-        conn = await database()["async_engine"].connect()
-        
-        # Test a simple query to see if the database is working
-        await conn.execute("SELECT 1")
-        print("PostgreSQL connection test successful")
-        
-        # Create tables if they don't exist yet
-        from app.db.models import Client, Workout, Exercise, APIKey
-        
-        # Use create_all to create tables that don't exist yet
-        # This is safe to call even if tables already exist
-        print("Ensuring database tables exist...")
-        Base.metadata.create_all(bind=engine)
-        print("Database tables verified/created")
-        
-    except Exception as e:
-        print(f"PostgreSQL connection error: {str(e)}")
-        raise  # Re-raise the exception to fail startup
+    # Try multiple times to connect to the database
+    max_retries = 3
+    retry_delay = 3  # seconds
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            # Test connection by making a simple query
+            print(f"Connection attempt {attempt}/{max_retries}...")
+            conn = await database()["async_engine"].connect()
+            
+            # Test a simple query to see if the database is working
+            # Note: We use text() to convert the string to an executable SQL statement
+            await conn.execute(text("SELECT 1"))
+            print("PostgreSQL connection test successful")
+            
+            # Create tables if they don't exist yet
+            from app.db.models import Client, Workout, Exercise, APIKey
+            
+            # Use create_all to create tables that don't exist yet
+            # This is safe to call even if tables already exist
+            print("Ensuring database tables exist...")
+            Base.metadata.create_all(bind=engine)
+            print("Database tables verified/created")
+            
+            # If we get here, connection was successful
+            return
+            
+        except Exception as e:
+            print(f"PostgreSQL connection error (attempt {attempt}/{max_retries}): {str(e)}")
+            
+            if attempt < max_retries:
+                print(f"Retrying in {retry_delay} seconds...")
+                import asyncio
+                await asyncio.sleep(retry_delay)
+            else:
+                print("All connection attempts failed")
+                # We'll still raise the exception to notify the caller
+                raise  # Re-raise the exception to fail startup
 
 async def disconnect_from_db():
     """Disconnect from database on app shutdown."""

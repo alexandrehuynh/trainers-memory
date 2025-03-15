@@ -29,8 +29,17 @@ if __name__ == "__main__":
     # Render sets the PORT environment variable
     port = int(os.getenv("PORT", 10000))
     
+    # Make the port binding VERY clear in logs for Render
+    logger.info(f"=== BINDING TO PORT {port} ON HOST 0.0.0.0 ===")
     logger.info(f"Starting server on port {port} at host 0.0.0.0...")
     logger.info(f"Using PostgreSQL database")
+    
+    # Print to stdout as well for Render's log detection
+    print(f"=== BINDING TO PORT {port} ON HOST 0.0.0.0 ===")
+    print(f"To check if port is open, run: curl http://0.0.0.0:{port}/")
+    
+    # Explicitly announce port binding for Render - this helps with port detection
+    print(f"RENDER PORT DETECTION: APP IS BINDING TO PORT {port}")
     
     try:
         # Start the API server

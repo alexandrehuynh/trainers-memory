@@ -31,7 +31,14 @@ load_dotenv()
 async def lifespan(app: FastAPI):
     # Startup: Connect to database
     print("Starting up API server...")
-    await connect_to_db()
+    try:
+        await connect_to_db()
+        print("Database connection successful")
+    except Exception as e:
+        print(f"ERROR during startup: {str(e)}")
+        print("The application will continue to run but may not function correctly")
+        # We don't re-raise the exception here because we want the app to start
+        # even if the database connection fails initially
     yield
     # Shutdown: Disconnect from database
     print("Shutting down API server...")
@@ -44,6 +51,11 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# Log the port we're using for Render's benefit
+port = os.getenv("PORT", "10000")
+print(f"FastAPI app configured to run on port {port}")
+print(f"=== RENDER PORT BINDING: APP WILL USE PORT {port} ===")
 
 # Configure CORS
 origins = [
@@ -70,7 +82,13 @@ api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
 # Add a simple health check endpoint at root
 @app.get("/")
 async def root():
-    return {"message": "Trainer's Memory API is running", "version": API_VERSION}
+    port = os.getenv("PORT", "10000")
+    return {
+        "message": "Trainer's Memory API is running", 
+        "version": API_VERSION,
+        "port": port,
+        "timestamp": datetime.now().isoformat()
+    }
 
 # Add a simple health check endpoint
 @app.get("/health")
