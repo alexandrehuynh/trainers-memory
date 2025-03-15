@@ -8,6 +8,9 @@ import Button from '@/components/ui/Button';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 
+// Force dynamic rendering for this route
+export const dynamic = 'force-dynamic';
+
 export default function SignIn() {
   const { signIn, resetPassword } = useAuth();
   const [email, setEmail] = useState<string>('');
