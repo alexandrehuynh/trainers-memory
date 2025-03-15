@@ -11,14 +11,16 @@ const { execSync } = require('child_process');
 
 console.log('🔍 Checking for problematic import paths...');
 
-// Paths to search for
-const pathsToCheck = [
-  '../lib/authContext',
-  '../../lib/authContext',
-  '../lib/themeContext',
-  '../../lib/themeContext',
-  '../lib/tokenHelper',
-  '../../lib/tokenHelper'
+// More precise patterns to check for
+const problematicPatterns = [
+  "from '../lib/", 
+  'from "../lib/',
+  "from '../../lib/", 
+  'from "../../lib/',
+  "from '../../../lib/", 
+  'from "../../../lib/',
+  "from '../../../../lib/", 
+  'from "../../../../lib/'
 ];
 
 // Files to check
@@ -50,9 +52,16 @@ let foundProblems = false;
 files.forEach(file => {
   const content = fs.readFileSync(file, 'utf8');
   
-  pathsToCheck.forEach(importPath => {
-    if (content.includes(`from '${importPath}'`) || content.includes(`from "${importPath}"`)) {
-      console.log(`❌ Found problematic import in ${file}: import from '${importPath}'`);
+  problematicPatterns.forEach(pattern => {
+    if (content.includes(pattern)) {
+      console.log(`❌ Found problematic import in ${file}: ${pattern}...`);
+      // Show the line that has the problem
+      const lines = content.split('\n');
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes(pattern)) {
+          console.log(`   Line ${i+1}: ${lines[i].trim()}`);
+        }
+      }
       foundProblems = true;
     }
   });
