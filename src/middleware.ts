@@ -5,7 +5,13 @@ import type { NextRequest } from 'next/server';
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
-  // Simply return the request for now - this just ensures routes are registered properly
+  // Special handling for signin route
+  if (pathname === '/signin') {
+    const url = new URL('/', request.url);
+    return NextResponse.rewrite(url);
+  }
+  
+  // For all other routes, just proceed normally
   return NextResponse.next();
 }
 
