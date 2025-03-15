@@ -1,26 +1,31 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { getJwtToken } from '@/lib/tokenHelper';
 
 // This middleware ensures routes are handled correctly
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   
-  // Special handling for signin route
-  if (pathname === '/signin') {
-    const url = new URL('/', request.url);
-    return NextResponse.rewrite(url);
+  // Get auth token from cookie
+  const token = request.cookies.get('supabase-auth-token')?.value || 
+                request.cookies.get('sb-auth-token')?.value;
+  
+  // Define protected routes
+  const isProtectedRoute = pathname.startsWith('/clients') || 
+                          pathname.startsWith('/workouts');
+                          
+  // Redirect to signin if accessing protected route without auth
+  if (isProtectedRoute && !token) {
+    return NextResponse.redirect(new URL('/signin', request.url));
   }
   
-  // For all other routes, just proceed normally
+  // Allow all other requests to proceed
   return NextResponse.next();
 }
 
-// Configure the matcher to include the signin route
+// Configure the matcher to focus on protected routes
 export const config = {
   matcher: [
-    '/',
-    '/signin',
-    '/login',
     '/clients/:path*',
     '/workouts/:path*',
   ],
