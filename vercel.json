@@ -1,8 +1,9 @@
 {
   "version": 2,
-  "buildCommand": "next build",
+  "buildCommand": "./vercel-build.sh",
   "outputDirectory": ".next",
   "framework": "nextjs",
+  "installCommand": "npm install",
   "rewrites": [
     { "source": "/(.*)", "destination": "/" }
   ]
