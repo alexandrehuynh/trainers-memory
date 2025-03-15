@@ -4,21 +4,21 @@ services:
     env: python
     buildCommand: ./build.sh
     startCommand: python server.py
-    disk:
-      name: sqlite-data
-      mountPath: /opt/render/project/src/data
-      sizeGB: 1
     envVars:
       - key: PORT
         value: 10000
-      - key: USE_SQLITE
-        value: "True"
+      - key: DB_HOST
+        value: dpg-cvadma7noe9s73f7ojag-a
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_NAME
+        value: trainers_memory_db
+      - key: DB_USER
+        value: trainers_memory_db_user
+      - key: DB_PASS
+        sync: false
       - key: DATABASE_URL
-        value: sqlite:///./data/trainers_memory.db
-      - key: SQLITE_URL
-        value: sqlite:///./data/trainers_memory.db
-      - key: ASYNC_SQLITE_URL
-        value: sqlite+aiosqlite:///./data/trainers_memory.db
+        value: postgresql://trainers_memory_db_user:${DB_PASS}@${DB_HOST}:${DB_PORT}/${DB_NAME}
       - key: OPENAI_API_KEY
         sync: false
       - key: JWT_SECRET
