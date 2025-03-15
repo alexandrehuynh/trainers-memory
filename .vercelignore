@@ -1,10 +1,22 @@
 # Vercel ignore file
+node_modules
+.git
+.github
+.venv
+.vscode
 README.md
+DEPLOYMENT.md
+backend/
+
+# Do NOT ignore configuration files
+!.babelrc
+!babel.config.js
+!jsconfig.json
+!tsconfig.json
+!next.config.js
+!.npmrc
+
 SETUP.md
-/backend
-/node_modules
-/.git
-/.github
 .env
 .env.local
 .env.*.local
