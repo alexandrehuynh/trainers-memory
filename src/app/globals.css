@@ -1,4 +1,7 @@
-@import "tailwindcss";
+/* @tailwind directive is processed by PostCSS and Tailwind */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
   --background: #ffffff;

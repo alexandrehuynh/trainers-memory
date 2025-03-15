@@ -1,6 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
+// Add type declaration for SpeechRecognition
+declare global {
+  interface Window {
+    SpeechRecognition?: any;
+    webkitSpeechRecognition?: any;
+  }
+}
+
 interface VoiceRecorderProps {
   clientId: string;
   onTranscriptGenerated?: (transcript: string) => void;

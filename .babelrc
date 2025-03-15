@@ -1,14 +1,16 @@
 {
   "presets": ["next/babel"],
   "plugins": [
-    [
-      "module-resolver",
-      {
-        "root": ["./"],
-        "alias": {
-          "@": "./src"
-        }
+    ["module-resolver", {
+      "alias": {
+        "@": "./src"
       }
-    ]
+    }]
+  ],
+  "overrides": [
+    {
+      "include": ["./node_modules/next/font/**/*.js"],
+      "plugins": []
+    }
   ]
 } 

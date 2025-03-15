@@ -1,8 +1,3 @@
 {
-  "framework": "nextjs",
-  "buildCommand": "npm run vercel-build",
-  "env": {
-    "NODE_ENV": "production",
-    "NPM_CONFIG_LEGACY_PEER_DEPS": "true"
-  }
+  "framework": "nextjs"
 } 
