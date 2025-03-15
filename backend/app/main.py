@@ -90,6 +90,12 @@ async def root():
         "timestamp": datetime.now().isoformat()
     }
 
+# Add support for HEAD requests to the root endpoint
+@app.head("/")
+async def root_head():
+    # HEAD requests should return the same headers as GET but no body
+    return None
+
 # Add a simple health check endpoint
 @app.get("/health")
 async def health_check():
