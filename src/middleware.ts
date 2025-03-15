@@ -20,6 +20,7 @@ export const config = {
   matcher: [
     '/',
     '/signin',
+    '/login',
     '/clients/:path*',
     '/workouts/:path*',
   ],

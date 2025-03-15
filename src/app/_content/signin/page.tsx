@@ -8,14 +8,7 @@ import Button from '@/components/ui/Button';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 
-// Force static generation for this route
-export const dynamic = 'error';
-export const revalidate = false;
-export const fetchCache = 'force-cache';
-export const runtime = 'nodejs';
-export const preferredRegion = 'auto';
-
-export default function SignIn() {
+export default function SignInContent() {
   const { signIn, resetPassword } = useAuth();
   const [email, setEmail] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -138,4 +131,4 @@ export default function SignIn() {
       </main>
     </div>
   );
-}
+} 

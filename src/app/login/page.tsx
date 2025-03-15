@@ -15,7 +15,7 @@ export const fetchCache = 'force-cache';
 export const runtime = 'nodejs';
 export const preferredRegion = 'auto';
 
-export default function SignIn() {
+export default function Login() {
   const { signIn, resetPassword } = useAuth();
   const [email, setEmail] = useState<string>('');
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -77,7 +77,7 @@ export default function SignIn() {
           <Card>
             <div className="text-center mb-6">
               <h1 className="text-2xl font-bold text-gray-900">
-                {mode === 'signin' ? 'Sign In' : 'Reset Password'}
+                {mode === 'signin' ? 'Log In' : 'Reset Password'}
               </h1>
               <p className="mt-2 text-sm text-gray-600">
                 {mode === 'signin'
@@ -138,4 +138,4 @@ export default function SignIn() {
       </main>
     </div>
   );
-}
+} 
