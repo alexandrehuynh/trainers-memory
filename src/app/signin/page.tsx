@@ -8,15 +8,6 @@ import Button from '@/components/ui/Button';
 import Link from 'next/link';
 import Navigation from '@/components/Navigation';
 
-// Force dynamic rendering for this route
-export const dynamic = 'force-dynamic';
-
-// Add metadata for the route
-export const metadata = {
-  title: 'Sign In - Trainer\'s Memory',
-  description: 'Sign in to your Trainer\'s Memory account',
-};
-
 export default function SignIn() {
   const { signIn, resetPassword } = useAuth();
   const [email, setEmail] = useState<string>('');
