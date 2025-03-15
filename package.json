@@ -6,13 +6,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "vercel-build": "npm install babel-plugin-module-resolver --no-save && next build",
     "start": "next start",
     "lint": "next lint",
     "test": "vitest"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
-    "babel-plugin-module-resolver": "^5.0.2",
     "next": "15.2.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
@@ -27,7 +27,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "babel-plugin-module-resolver": "^5.0.2",
+    "babel-plugin-module-resolver": "5.0.2",
     "babel-preset-next": "^1.4.0",
     "eslint": "^9",
     "eslint-config-next": "15.2.1",

@@ -1,14 +1,8 @@
 {
-  "version": 2,
-  "buildCommand": "./vercel-build.sh",
-  "outputDirectory": ".next",
   "framework": "nextjs",
-  "installCommand": "npm install",
+  "buildCommand": "npm run vercel-build",
   "env": {
     "NODE_ENV": "production",
     "NPM_CONFIG_LEGACY_PEER_DEPS": "true"
-  },
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/" }
-  ]
+  }
 } 

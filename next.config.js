@@ -5,7 +5,8 @@ const path = require('path');
 const nextConfig = {
   /* config options here */
   experimental: {
-    // Empty but kept for structure
+    esmExternals: 'loose',
+    fullySpecified: false
   },
   webpack: (config, { isServer }) => {
     // Add support for path aliases
