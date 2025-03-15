@@ -1,5 +1,8 @@
-import uvicorn
 import os
+# Force SQLite mode for Render deployment
+os.environ["USE_SQLITE"] = "True"
+
+import uvicorn
 import sys
 import logging
 from dotenv import load_dotenv
@@ -17,9 +20,8 @@ load_dotenv()
 # Try to initialize the database if necessary
 try:
     from init_db import init_sqlite_db
-    if os.getenv("USE_SQLITE", "False").lower() in ("true", "1", "t"):
-        logger.info("Initializing SQLite database...")
-        init_sqlite_db()
+    logger.info("Initializing SQLite database...")
+    init_sqlite_db()
 except Exception as e:
     logger.error(f"Error initializing database: {e}")
     # Continue anyway, the app might handle connection issues gracefully
