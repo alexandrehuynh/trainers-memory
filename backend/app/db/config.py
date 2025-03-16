@@ -12,7 +12,7 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import QueuePool
-from contextlib import contextmanager
+from contextlib import contextmanager, asynccontextmanager
 from databases import Database
 from dotenv import load_dotenv
 from functools import lru_cache
@@ -165,4 +165,27 @@ async def disconnect_from_db():
     
     # Always dispose the sync engine to be safe
     engine.dispose()
-    print("Disconnected from database") 
+    print("Disconnected from database")
+
+# Create async session with transaction context manager
+@asynccontextmanager
+async def transaction(session: AsyncSession):
+    """
+    Async context manager for transaction handling.
+    
+    Example:
+        async with transaction(session) as tx_session:
+            # Do database operations with tx_session
+    
+    The transaction will be committed on successful completion
+    or rolled back if an exception occurs.
+    """
+    try:
+        async with session.begin():
+            yield session
+        # Transaction will be committed when the context manager exits normally
+    except Exception as e:
+        # Transaction will be rolled back on exception
+        await session.rollback()
+        print(f"Transaction rolled back due to error: {e}")
+        raise 

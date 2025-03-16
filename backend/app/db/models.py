@@ -142,32 +142,31 @@ class APIKey(Base):
         return f"<APIKey {self.name}>"
 
 class WorkoutTemplate(Base):
-    """Template for pre-configured workouts that users can instantiate."""
+    """Workout Template model for storing pre-defined workout structures."""
     __tablename__ = "workout_templates"
+    __table_args__ = get_table_args([
+        Index('ix_workout_templates_user_id', 'user_id')
+    ])
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False)
     description = Column(Text, nullable=True)
-    type = Column(String(255), nullable=False)
-    duration = Column(Integer, nullable=False)
-    is_system = Column(Boolean, default=False, nullable=False)  # System templates available to all users
-    user_id = Column(UUID(as_uuid=True), ForeignKey(get_foreign_key_target("users.id"), ondelete="CASCADE"), nullable=True)  # Null for system templates
+    type = Column(String(255), nullable=False, default="strength")
+    duration = Column(Integer, nullable=False, default=60)
+    is_system = Column(Boolean, default=False, nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey(get_foreign_key_target("users.id"), ondelete="CASCADE"), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=True)
+    updated_at = Column(DateTime, nullable=True)
     
-    # Relationships - explicitly define the relationship with primaryjoin
-    exercises = relationship(
-        "TemplateExercise", 
-        back_populates="template", 
-        cascade="all, delete-orphan",
-        primaryjoin="WorkoutTemplate.id == TemplateExercise.template_id"
-    )
+    # Relationships
+    user = relationship("User")
+    exercises = relationship("TemplateExercise", back_populates="template", cascade="all, delete-orphan")
     
     def __repr__(self):
         return f"<WorkoutTemplate {self.name}>"
 
 class TemplateExercise(Base):
-    """Exercise within a workout template."""
+    """Template Exercise model for storing exercises associated with workout templates."""
     __tablename__ = "template_exercises"
     __table_args__ = get_table_args([
         Index('ix_template_exercises_template_id', 'template_id')
@@ -177,16 +176,14 @@ class TemplateExercise(Base):
     template_id = Column(UUID(as_uuid=True), ForeignKey(get_foreign_key_target("workout_templates.id"), ondelete="CASCADE"), nullable=False)
     name = Column(String(255), nullable=False)
     sets = Column(Integer, nullable=False)
-    reps = Column(Integer, nullable=False)
-    weight = Column(Float, nullable=True)  # Can be null for bodyweight exercises
+    reps = Column(String(50), nullable=True)
+    rest_time = Column(Integer, nullable=True)  # in seconds
     notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, nullable=True)
     
-    # Relationships - explicitly define the relationship with primaryjoin
-    template = relationship(
-        "WorkoutTemplate", 
-        back_populates="exercises",
-        primaryjoin="TemplateExercise.template_id == WorkoutTemplate.id"
-    )
+    # Relationships
+    template = relationship("WorkoutTemplate", back_populates="exercises")
     
     def __repr__(self):
         return f"<TemplateExercise {self.name}>" 

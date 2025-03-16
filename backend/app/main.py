@@ -15,6 +15,9 @@ from app.utils.response import StandardResponse, API_VERSION
 from app.db import connect_to_db, disconnect_from_db, AsyncAPIKeyRepository, get_async_db
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# Import middleware
+from app.middleware import DatabaseErrorMiddleware, RequestLoggingMiddleware
+
 # Try to import models with error handling
 try:
     from app.db.models import WorkoutTemplate, TemplateExercise
@@ -28,7 +31,7 @@ from app.auth_utils import get_api_key, validate_api_key, API_KEY_NAME
 
 # Import routers
 from app.routers import clients, workouts, intelligence, transformation, communication, analytics, coaching, content
-from app.routers import ai_analysis, ocr, nutrition
+from app.routers import ai_analysis, ocr, nutrition, templates
 
 # Load environment variables
 load_dotenv()
@@ -78,13 +81,18 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],         # Allow all origins temporarily
+    allow_origin_regex=".*",     # Allow any origin with regex
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
-    allow_headers=["*"],
-    expose_headers=["*"],
-    max_age=86400,  # 24 hours
+    allow_methods=["*"],         # Allow all methods
+    allow_headers=["*"],         # Allow all headers
+    expose_headers=["*"],        # Expose all headers
+    max_age=86400,               # 24 hours
 )
+
+# Add custom error handling middleware
+app.add_middleware(DatabaseErrorMiddleware)
+app.add_middleware(RequestLoggingMiddleware)
 
 # Add API key authentication scheme
 api_key_header = APIKeyHeader(name=API_KEY_NAME, auto_error=False)
@@ -232,6 +240,12 @@ app.include_router(
     workouts.router,
     prefix=f"/api/{API_VERSION}",
     tags=["Workouts"],
+)
+
+app.include_router(
+    templates.router, 
+    prefix=f"/api/{API_VERSION}",
+    tags=["Templates"],
 )
 
 app.include_router(

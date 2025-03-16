@@ -1,5 +1,13 @@
 import { getJwtToken } from './tokenHelper';
 
+// Debug environment variables to ensure correct configuration
+console.log('API Client Environment Variables:', {
+  NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL || '(not set)',
+  NEXT_PUBLIC_USE_LOCAL_BACKEND: process.env.NEXT_PUBLIC_USE_LOCAL_BACKEND || '(not set)',
+  NEXT_PUBLIC_USE_FALLBACK_ROLES: process.env.NEXT_PUBLIC_USE_FALLBACK_ROLES || '(not set)',
+  NODE_ENV: process.env.NODE_ENV || '(not set)'
+});
+
 // Update API base URL to use the same configuration logic as in authContext.tsx
 // Determine backend URL from environment variables
 const useLocalBackend = process.env.NEXT_PUBLIC_USE_LOCAL_BACKEND === 'true';
@@ -33,6 +41,54 @@ interface ApiResponse<T> {
 const apiCache: Record<string, { timestamp: number; data: any }> = {};
 const CACHE_EXPIRY = 5 * 60 * 1000; // 5 minutes in milliseconds
 
+// Backend connection state
+let isBackendAvailable = true; // Assume backend is available initially
+let lastBackendCheck = 0;
+const BACKEND_CHECK_INTERVAL = 30 * 1000; // Check backend availability every 30 seconds
+
+// Function to check if backend is available
+async function checkBackendAvailability(): Promise<boolean> {
+  // Don't check too frequently
+  const now = Date.now();
+  if (now - lastBackendCheck < BACKEND_CHECK_INTERVAL) {
+    return isBackendAvailable;
+  }
+  
+  lastBackendCheck = now;
+  console.log(`Checking backend availability: ${backendBaseUrl}`);
+  
+  try {
+    // Use the AbortController to add a short timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+    
+    // Use the health endpoint for checking backend availability
+    const healthUrl = `${backendBaseUrl}/health`;
+    console.log(`Trying health check at: ${healthUrl}`);
+    
+    const response = await fetch(healthUrl, {
+      method: 'GET',
+      signal: controller.signal
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (response.ok) {
+      console.log(`Backend is available at ${backendBaseUrl}`);
+      isBackendAvailable = true;
+      return true;
+    } else {
+      console.warn(`Backend health check failed with status: ${response.status}`);
+      isBackendAvailable = false;
+      return false;
+    }
+  } catch (error) {
+    console.error(`Backend connection check failed for ${backendBaseUrl}:`, error);
+    isBackendAvailable = false;
+    return false;
+  }
+}
+
 // Function to generate a cache key
 const getCacheKey = (url: string, options: RequestOptions): string => {
   const method = options.method || 'GET';
@@ -63,20 +119,45 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
   const cacheEnabled = cache !== false; // Cache enabled by default
   const maxRetries = retries; // Use the provided retries
   
+  console.log(`API Request initiated: ${method} ${url}`);
+  console.log(`Token present: ${!!token}`);
+  console.log(`Request config:`, { method, url, headers: options.headers, useCache: cacheEnabled });
+  
+  // Check backend availability first for GET requests
+  // For mutations we'll always try to make the request
+  if (method === 'GET') {
+    const backendAvailable = await checkBackendAvailability();
+    if (!backendAvailable) {
+      console.warn(`Backend not available, using fallback data for ${endpoint}`);
+      if (endpoint.includes('/clients')) {
+        return generateSampleClients() as unknown as T;
+      } else if (endpoint.includes('/workouts')) {
+        return generateSampleWorkouts() as unknown as T;
+      }
+    }
+  }
+  
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'X-API-Key': 'test_key_12345', // Add the test API key for all requests
+    'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || 'test_key_12345', // Use environment variable if available
     ...options.headers,
   };
   
+  console.log('Request headers:', headers); // Log headers for debugging
+  
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+    console.log('Using auth token:', token.substring(0, 10) + '...'); // Log part of the token for debugging
+  } else {
+    console.warn('No authentication token available for request to:', endpoint);
   }
   
   const config: RequestInit = {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
+    // Add a timeout using AbortController - reduce to a more reasonable 8 seconds
+    signal: AbortSignal.timeout(8000) // 8 second timeout
   };
   
   // Check cache for GET requests
@@ -92,15 +173,38 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
   // Function to handle the actual fetch with retries
   const fetchWithRetry = async (retries: number): Promise<T> => {
     try {
-      console.log(`API Request: ${method} ${endpoint}`);
+      console.log(`API Request: ${method} ${endpoint} - attempt ${maxRetries - retries + 1}/${maxRetries + 1}`);
+      const startTime = Date.now();
+      
       const response = await fetch(url, config);
+      const endTime = Date.now();
+      console.log(`API Response received in ${endTime - startTime}ms for ${endpoint}`);
       
       // Handle 401 Unauthorized (token expired)
       if (response.status === 401) {
-        console.log('401 Unauthorized - Token may have expired. Attempting refresh...');
+        console.log('401 Unauthorized - Token may have expired or API key is invalid');
+        
+        try {
+          const errorData = await response.json();
+          console.error('Auth error details:', errorData);
+        } catch (e) {
+          console.error('Could not parse 401 error response');
+        }
+        
         const refreshResult = await refreshTokenAndRetry();
         if (refreshResult) {
           return refreshResult;
+        }
+      }
+      
+      // Handle 500 Internal Server Error for more detailed logging
+      if (response.status === 500) {
+        console.error('500 Internal Server Error from backend');
+        try {
+          const errorText = await response.text();
+          console.error('Server error details:', errorText);
+        } catch (e) {
+          console.error('Could not read error details from 500 response');
         }
       }
       
@@ -132,6 +236,7 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
       
       // Parse successful response
       const data = await response.json();
+      console.log(`API data received for ${endpoint}:`, { dataSize: JSON.stringify(data).length });
       
       // Process response data based on endpoint to maintain compatibility
       const processedData = processResponseData(endpoint, data);
@@ -149,11 +254,35 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
     } catch (error: any) {
       console.error(`API Error for ${endpoint}:`, error.message);
       
+      // Check if this is an AbortError (timeout)
+      if (error.name === 'AbortError' || error.name === 'TimeoutError') {
+        console.error(`Request timeout for ${endpoint} - ${error.message}`);
+        // Fallback to sample data if available
+        if (endpoint.includes('/clients')) {
+          console.error(`Timeout fetching clients - using fallback data`);
+          // Return fallback sample client data
+          return generateSampleClients() as unknown as T;
+        } else if (endpoint.includes('/workouts')) {
+          console.error(`Timeout fetching workouts - using fallback data`);
+          // Return fallback sample workout data
+          return generateSampleWorkouts() as unknown as T;
+        }
+      }
+      
       // Only retry on network errors, not on API errors
-      if (retries > 0 && error.message?.includes('Failed to fetch')) {
+      if (retries > 0 && (error.message?.includes('Failed to fetch') || error.name === 'TypeError' || error.name === 'AbortError')) {
         console.log(`Retrying API request (${retries} retries left): ${endpoint}`);
         await new Promise(resolve => setTimeout(resolve, retryDelay));
         return fetchWithRetry(retries - 1);
+      }
+      
+      // If we've exhausted retries and still failed, use fallback data
+      if (endpoint.includes('/clients')) {
+        console.error(`All retries failed for ${endpoint} - using fallback client data`);
+        return generateSampleClients() as unknown as T;
+      } else if (endpoint.includes('/workouts')) {
+        console.error(`All retries failed for ${endpoint} - using fallback workout data`);
+        return generateSampleWorkouts() as unknown as T;
       }
       
       throw error;
@@ -585,4 +714,104 @@ export const nutritionApi = {
     );
     return response;
   }
-}; 
+};
+
+// Generate sample client data for fallback
+function generateSampleClients(): Client[] {
+  console.log('Generating sample client data for fallback');
+  notifyFallbackDataUsed('clients');
+  return [
+    {
+      id: 'sample-1',
+      name: 'Alex Smith (Sample)',
+      email: 'alex@example.com',
+      phone: '555-123-4567',
+      notes: 'Sample client data - API connection failed',
+      created_at: new Date().toISOString(),
+    },
+    {
+      id: 'sample-2',
+      name: 'Jamie Johnson (Sample)',
+      email: 'jamie@example.com',
+      phone: '555-987-6543',
+      notes: 'Sample client data - API connection failed',
+      created_at: new Date().toISOString(),
+    }
+  ];
+}
+
+// Generate sample workout data for fallback
+function generateSampleWorkouts(): Workout[] {
+  console.log('Generating sample workout data for fallback');
+  notifyFallbackDataUsed('workouts');
+  return [
+    {
+      id: 'sample-w1',
+      client_id: 'sample-1',
+      client_name: 'Alex Smith (Sample)',
+      date: new Date().toISOString().split('T')[0],
+      type: 'Strength',
+      duration: 60,
+      notes: 'Sample workout data - API connection failed',
+      exercises: [
+        {
+          id: 'ex-1',
+          name: 'Bench Press',
+          sets: 3,
+          reps: 10,
+          weight: 135
+        },
+        {
+          id: 'ex-2',
+          name: 'Squats',
+          sets: 3,
+          reps: 12,
+          weight: 185
+        }
+      ],
+      created_at: new Date().toISOString()
+    }
+  ];
+}
+
+// Function to notify the user that fallback data is being used
+function notifyFallbackDataUsed(dataType: string): void {
+  // Create a notification element if it doesn't exist
+  const existingNotification = document.getElementById('fallback-data-notification');
+  if (existingNotification) {
+    return; // Notification already exists, don't create another one
+  }
+  
+  const notification = document.createElement('div');
+  notification.id = 'fallback-data-notification';
+  notification.style.position = 'fixed';
+  notification.style.bottom = '20px';
+  notification.style.right = '20px';
+  notification.style.backgroundColor = '#f44336';
+  notification.style.color = 'white';
+  notification.style.padding = '15px 20px';
+  notification.style.borderRadius = '5px';
+  notification.style.boxShadow = '0 2px 10px rgba(0,0,0,0.2)';
+  notification.style.zIndex = '9999';
+  notification.style.maxWidth = '400px';
+  
+  notification.innerHTML = `
+    <div style="font-weight: bold; margin-bottom: 8px;">Unable to connect to API</div>
+    <div>Using sample ${dataType} data instead. Please check your internet connection and try again later.</div>
+    <button id="dismiss-notification" style="background: white; color: #f44336; border: none; padding: 5px 10px; margin-top: 10px; cursor: pointer; border-radius: 3px;">Dismiss</button>
+  `;
+  
+  document.body.appendChild(notification);
+  
+  // Add event listener to dismiss button
+  document.getElementById('dismiss-notification')?.addEventListener('click', () => {
+    document.body.removeChild(notification);
+  });
+  
+  // Automatically remove after 10 seconds
+  setTimeout(() => {
+    if (document.body.contains(notification)) {
+      document.body.removeChild(notification);
+    }
+  }, 10000);
+} 

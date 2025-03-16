@@ -67,44 +67,69 @@ class AsyncBaseRepository(Generic[T]):
     
     async def get_by_id(self, id: UUID) -> Optional[T]:
         """Get a record by its ID."""
-        result = await self.session.execute(
-            select(self.model).where(self.model.id == id)
-        )
-        return result.scalars().first()
+        try:
+            result = await self.session.execute(
+                select(self.model).where(self.model.id == id)
+            )
+            return result.scalars().first()
+        except Exception as e:
+            print(f"Error in get_by_id: {e}")
+            await self.session.rollback()
+            return None
     
     async def get_all(self, skip: int = 0, limit: int = 100) -> List[T]:
         """Get all records with pagination."""
-        result = await self.session.execute(
-            select(self.model).offset(skip).limit(limit)
-        )
-        return result.scalars().all()
+        try:
+            result = await self.session.execute(
+                select(self.model).offset(skip).limit(limit)
+            )
+            return result.scalars().all()
+        except Exception as e:
+            print(f"Error in get_all: {e}")
+            await self.session.rollback()
+            return []
     
     async def create(self, data: Dict[str, Any]) -> T:
         """Create a new record."""
-        db_item = self.model(**data)
-        self.session.add(db_item)
-        await self.session.commit()
-        await self.session.refresh(db_item)
-        return db_item
+        try:
+            db_item = self.model(**data)
+            self.session.add(db_item)
+            await self.session.commit()
+            await self.session.refresh(db_item)
+            return db_item
+        except Exception as e:
+            print(f"Error in create: {e}")
+            await self.session.rollback()
+            raise
     
     async def update(self, id: UUID, data: Dict[str, Any]) -> Optional[T]:
         """Update an existing record."""
-        db_item = await self.get_by_id(id)
-        if db_item:
-            for key, value in data.items():
-                setattr(db_item, key, value)
-            await self.session.commit()
-            await self.session.refresh(db_item)
-        return db_item
+        try:
+            db_item = await self.get_by_id(id)
+            if db_item:
+                for key, value in data.items():
+                    setattr(db_item, key, value)
+                await self.session.commit()
+                await self.session.refresh(db_item)
+            return db_item
+        except Exception as e:
+            print(f"Error in update: {e}")
+            await self.session.rollback()
+            raise
     
     async def delete(self, id: UUID) -> bool:
         """Delete a record by its ID."""
-        db_item = await self.get_by_id(id)
-        if db_item:
-            await self.session.delete(db_item)
-            await self.session.commit()
-            return True
-        return False
+        try:
+            db_item = await self.get_by_id(id)
+            if db_item:
+                await self.session.delete(db_item)
+                await self.session.commit()
+                return True
+            return False
+        except Exception as e:
+            print(f"Error in delete: {e}")
+            await self.session.rollback()
+            return False
 
 class UserRepository(BaseRepository[User]):
     """Repository for User model operations."""
@@ -195,16 +220,66 @@ class AsyncClientRepository(AsyncBaseRepository[Client]):
     
     async def get_all(self, skip: int = 0, limit: int = 100, user_id: UUID = None) -> List[Client]:
         """Get all clients with pagination and optional user isolation."""
-        query = select(Client)
-        
-        # Apply user isolation unless user_id is None (admin bypass)
-        if user_id is not None:
-            query = query.where(Client.user_id == user_id)
+        try:
+            query = select(Client)
             
-        result = await self.session.execute(
-            query.offset(skip).limit(limit)
-        )
-        return result.scalars().all()
+            # Apply user isolation unless user_id is None (admin bypass)
+            if user_id is not None:
+                query = query.where(Client.user_id == user_id)
+                
+            result = await self.session.execute(
+                query.offset(skip).limit(limit)
+            )
+            return result.scalars().all()
+        except Exception as e:
+            # Log the error
+            print(f"Error in AsyncClientRepository.get_all: {e}")
+            
+            # Roll back the transaction to clear the error state
+            await self.session.rollback()
+            
+            # Try a simpler query as a fallback
+            try:
+                # If we got here, the session was in a failed state
+                # Execute a simple query to reset the session
+                await self.session.execute(text("SELECT 1"))
+                
+                # Now retry with a simpler query
+                if user_id is not None:
+                    sql = text("""
+                        SELECT id, name, email, phone, notes, created_at, updated_at
+                        FROM clients 
+                        WHERE user_id = :user_id
+                        OFFSET :skip
+                        LIMIT :limit
+                    """).bindparams(user_id=user_id, skip=skip, limit=limit)
+                else:
+                    sql = text("""
+                        SELECT id, name, email, phone, notes, created_at, updated_at
+                        FROM clients
+                        OFFSET :skip
+                        LIMIT :limit
+                    """).bindparams(skip=skip, limit=limit)
+                
+                result = await self.session.execute(sql)
+                
+                # Convert the rows to Client objects
+                clients = []
+                for row in result.fetchall():
+                    client = Client()
+                    client.id = row[0]
+                    client.name = row[1]
+                    client.email = row[2]
+                    client.phone = row[3]
+                    client.notes = row[4]
+                    client.created_at = row[5]
+                    client.updated_at = row[6]
+                    clients.append(client)
+                
+                return clients
+            except Exception as inner_e:
+                print(f"Error in fallback query: {inner_e}")
+                return []
 
 class WorkoutRepository(BaseRepository[Workout]):
     """Repository for Workout model operations."""
@@ -529,25 +604,39 @@ class AsyncWorkoutTemplateRepository(AsyncBaseRepository[WorkoutTemplate]):
     
     async def get_available_templates(self, user_id: UUID) -> List[WorkoutTemplate]:
         """Get all workout templates available to a user (system templates + user's own templates)."""
-        result = await self.session.execute(
-            select(WorkoutTemplate).where(
-                (WorkoutTemplate.is_system == True) | (WorkoutTemplate.user_id == user_id)
-            )
-        )
-        return result.scalars().all()
+        try:
+            # Use a simpler query that works with async SQLAlchemy
+            if user_id is not None:
+                query = select(WorkoutTemplate).where(
+                    WorkoutTemplate.user_id == user_id
+                )
+            else:
+                query = select(WorkoutTemplate)
+            
+            result = await self.session.execute(query)
+            return result.scalars().all()
+        except Exception as e:
+            print(f"Error in get_available_templates: {e}")
+            await self.session.rollback()
+            return []
     
     async def get_by_id(self, id: UUID, user_id: UUID = None) -> Optional[WorkoutTemplate]:
         """Get a template by ID with optional user isolation."""
-        query = select(WorkoutTemplate).where(WorkoutTemplate.id == id)
-        
-        # Apply user isolation unless user_id is None (admin bypass) but always include system templates
-        if user_id is not None:
-            query = query.where(
-                (WorkoutTemplate.is_system == True) | (WorkoutTemplate.user_id == user_id)
-            )
+        try:
+            query = select(WorkoutTemplate).where(WorkoutTemplate.id == id)
             
-        result = await self.session.execute(query)
-        return result.scalars().first()
+            # Apply user isolation unless user_id is None (admin bypass) but always include system templates
+            if user_id is not None:
+                query = query.where(
+                    (WorkoutTemplate.is_system == True) | (WorkoutTemplate.user_id == user_id)
+                )
+                
+            result = await self.session.execute(query)
+            return result.scalars().first()
+        except Exception as e:
+            print(f"Error in get_by_id: {e}")
+            await self.session.rollback()
+            return None
 
 class TemplateExerciseRepository(BaseRepository[TemplateExercise]):
     """Repository for TemplateExercise model operations."""
@@ -569,7 +658,28 @@ class AsyncTemplateExerciseRepository(AsyncBaseRepository[TemplateExercise]):
     
     async def get_by_template(self, template_id: UUID) -> List[TemplateExercise]:
         """Get all exercises for a template."""
-        result = await self.session.execute(
-            select(TemplateExercise).where(TemplateExercise.template_id == template_id)
-        )
-        return result.scalars().all() 
+        try:
+            stmt = select(TemplateExercise).where(TemplateExercise.template_id == template_id)
+            result = await self.session.execute(stmt)
+            return result.scalars().all()
+        except Exception as e:
+            print(f"Error in get_by_template: {e}")
+            await self.session.rollback()
+            return []
+            
+    async def create_for_template(self, template_id: UUID, exercise_data: Dict[str, Any]) -> TemplateExercise:
+        """Create a new exercise for a template."""
+        try:
+            # Ensure template_id is set
+            exercise_data["template_id"] = template_id
+            
+            # Create the new exercise
+            new_exercise = TemplateExercise(**exercise_data)
+            self.session.add(new_exercise)
+            await self.session.commit()
+            await self.session.refresh(new_exercise)
+            return new_exercise
+        except Exception as e:
+            await self.session.rollback()
+            print(f"Error in create_for_template: {e}")
+            raise 

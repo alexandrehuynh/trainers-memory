@@ -101,7 +101,8 @@ async def validate_api_key(
                 return {
                     "client_id": "00000000-0000-0000-0000-000000000001",
                     "api_key_id": "00000000-0000-0000-0000-000000000099",
-                    "api_key_name": "Test API Key"
+                    "api_key_name": "Test API Key",
+                    "user_id": "00000000-0000-0000-0000-000000000001"
                 }
             
             raise HTTPException(
@@ -114,7 +115,8 @@ async def validate_api_key(
         result = {
             "client_id": api_key_record.client_id,
             "api_key_id": api_key_record.id,
-            "api_key_name": api_key_record.name
+            "api_key_name": api_key_record.name,
+            "user_id": api_key_record.user_id if hasattr(api_key_record, 'user_id') else None
         }
         logger.info(f"API key validated successfully: {api_key[:5]}... for client_id: {result['client_id']}")
         return result
@@ -130,7 +132,8 @@ async def validate_api_key(
             return {
                 "client_id": "00000000-0000-0000-0000-000000000001",
                 "api_key_id": "00000000-0000-0000-0000-000000000099",
-                "api_key_name": "Test API Key"
+                "api_key_name": "Test API Key",
+                "user_id": "00000000-0000-0000-0000-000000000001"
             }
             
         raise HTTPException(
