@@ -9,6 +9,7 @@ import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
 import { getJwtToken } from '@/lib/tokenHelper';
+import { clientsApi } from '@/lib/apiClient';
 
 interface ClientFormData {
   name: string;
@@ -43,19 +44,12 @@ export default function NewClientPage() {
     setError(null);
 
     try {
-      const response = await fetch('http://localhost:8000/api/v1/clients', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${getJwtToken() || ''}`,
-          'X-API-Key': 'test_key_12345'
-        },
-        body: JSON.stringify(formData),
+      const newClient = await clientsApi.create({
+        name: formData.name,
+        email: formData.email,
+        phone: formData.phone,
+        notes: formData.notes
       });
-
-      if (!response.ok) {
-        throw new Error('Failed to create client');
-      }
 
       // Redirect to clients list on success
       router.push('/clients');

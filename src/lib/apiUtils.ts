@@ -3,6 +3,32 @@
  */
 
 /**
+ * Validate required environment variables and log warnings
+ */
+function validateEnvironmentVariables() {
+  // Check backend URL
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+  if (!backendUrl) {
+    console.error('NEXT_PUBLIC_BACKEND_URL is not set in environment variables!');
+    console.warn('Using fallback URL: https://trainers-memory.onrender.com');
+  }
+  
+  // Check API key
+  const apiKey = process.env.NEXT_PUBLIC_API_KEY;
+  if (!apiKey) {
+    console.error('NEXT_PUBLIC_API_KEY is not set in environment variables!');
+    if (process.env.NODE_ENV === 'production') {
+      console.error('This will cause authentication failures in production!');
+    } else {
+      console.warn('Using fallback test key in development. This will not work in production.');
+    }
+  }
+}
+
+// Call validation on module load
+validateEnvironmentVariables();
+
+/**
  * Get the base API URL with the correct path prefix
  */
 export function getBaseApiUrl(): string {
@@ -14,8 +40,15 @@ export function getBaseApiUrl(): string {
   const cleanBackendUrl = backendUrl.endsWith('/') 
     ? backendUrl.slice(0, -1) 
     : backendUrl;
+  
+  const baseApiUrl = `${cleanBackendUrl}${pathPrefix}`;
+  
+  // Log for debugging - only in development
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(`API Base URL: ${baseApiUrl}`);
+  }
     
-  return `${cleanBackendUrl}${pathPrefix}`;
+  return baseApiUrl;
 }
 
 /**
@@ -31,6 +64,15 @@ export function getApiUrl(endpoint: string): string {
   const cleanEndpoint = endpoint.startsWith('/') 
     ? endpoint 
     : `/${endpoint}`;
+  
+  const fullUrl = `${baseUrl}${cleanEndpoint}`;
+  
+  // Validate URL format
+  try {
+    new URL(fullUrl);
+  } catch (error) {
+    console.error(`Invalid API URL generated: ${fullUrl}`, error);
+  }
     
-  return `${baseUrl}${cleanEndpoint}`;
+  return fullUrl;
 } 

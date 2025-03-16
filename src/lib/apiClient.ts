@@ -7,6 +7,7 @@ console.log('API Client Environment Variables:', {
   NEXT_PUBLIC_USE_LOCAL_BACKEND: process.env.NEXT_PUBLIC_USE_LOCAL_BACKEND || '(not set)',
   NEXT_PUBLIC_USE_FALLBACK_ROLES: process.env.NEXT_PUBLIC_USE_FALLBACK_ROLES || '(not set)',
   NEXT_PUBLIC_API_PATH_PREFIX: process.env.NEXT_PUBLIC_API_PATH_PREFIX || '(not set)',
+  NEXT_PUBLIC_API_KEY: process.env.NEXT_PUBLIC_API_KEY ? '(set)' : '(not set)', // Don't log actual API key
   NODE_ENV: process.env.NODE_ENV || '(not set)'
 });
 
@@ -133,16 +134,14 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
       `/api/v1${endpoint}` : 
       `/api/v1/${endpoint}`;
 
-  // Use the appropriate URL based on the environment
+  // IMPORTANT FIX: Always use the same URL construction logic regardless of HTTP method
+  // This ensures consistency between GET, POST, PUT, DELETE requests
   let url;
-  if (isProduction) {
-    // In production, always use the production backend URL
-    url = getApiUrl(apiEndpoint);
-  } else if (useLocalBackend) {
+  if (useLocalBackend && !isProduction) {
     // For local development with local backend flag enabled
     url = `${localBackendUrl}${apiEndpoint}`;
   } else {
-    // For other non-production environments, use the configured backend URL
+    // For production or when using remote backend in development
     url = getApiUrl(apiEndpoint);
   }
   
@@ -168,13 +167,28 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
     }
   }
   
+  // IMPROVED API KEY HANDLING: Check for API key and provide clear error message if missing
+  const apiKey = process.env.NEXT_PUBLIC_API_KEY;
+  if (!apiKey) {
+    console.error('API KEY MISSING: No NEXT_PUBLIC_API_KEY environment variable found.');
+    // In development, we'll use a fallback, but log a warning
+    if (!isProduction) {
+      console.warn('Using fallback API key for development only. This will not work in production.');
+    }
+  }
+  
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'X-API-Key': process.env.NEXT_PUBLIC_API_KEY || 'test_key_12345', // Use environment variable if available
+    // Only use fallback key in development, never in production
+    'X-API-Key': isProduction ? (apiKey || '') : (apiKey || 'test_key_12345'),
     ...options.headers,
   };
   
-  console.log('Request headers:', headers); // Log headers for debugging
+  console.log('Request headers:', {
+    'Content-Type': headers['Content-Type'],
+    'X-API-Key': headers['X-API-Key'] ? '(set)' : '(not set)', // Redact actual API key
+    'Authorization': headers['Authorization'] ? '(set)' : '(not set)' // Redact actual token
+  });
   
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -242,27 +256,36 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
       // For all other non-200 responses, try to parse the error
       if (!response.ok) {
         let errorMessage = `API error: ${response.status} ${response.statusText}`;
+        let errorData = null;
         
         try {
-          const errorData = await response.json();
+          errorData = await response.json();
           if (errorData && errorData.message) {
             errorMessage = errorData.message;
           }
+          
+          // Enhanced error details
+          console.error(`API Error (${response.status})`, {
+            url,
+            method,
+            endpoint,
+            status: response.status,
+            statusText: response.statusText,
+            errorData,
+            errorMessage
+          });
+          
+          throw new Error(errorMessage);
         } catch (e) {
-          // If we can't parse JSON, use the text content if available
+          // If we can't parse as JSON, try to get raw text
           try {
             const errorText = await response.text();
-            if (errorText) {
-              errorMessage = errorText;
-            }
-          } catch (textError) {
-            // If we can't get text either, just use the status
-            console.error('Could not parse error response', textError);
+            console.error(`API Error (${response.status}) - Raw response:`, errorText);
+          } catch {
+            console.error(`API Error (${response.status}) - Could not read response body`);
           }
+          throw new Error(errorMessage);
         }
-        
-        console.error(`API returned error: ${errorMessage}`);
-        throw new Error(errorMessage);
       }
       
       // Parse successful response
@@ -283,37 +306,36 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
       
       return processedData;
     } catch (error: any) {
-      console.error(`API Error for ${endpoint}:`, error.message);
-      
-      // Check if this is an AbortError (timeout)
-      if (error.name === 'AbortError' || error.name === 'TimeoutError') {
-        console.error(`Request timeout for ${endpoint} - ${error.message}`);
-        // Fallback to sample data if available
-        if (endpoint.includes('/clients')) {
-          console.error(`Timeout fetching clients - using fallback data`);
-          // Return fallback sample client data
-          return generateSampleClients() as unknown as T;
-        } else if (endpoint.includes('/workouts')) {
-          console.error(`Timeout fetching workouts - using fallback data`);
-          // Return fallback sample workout data
-          return generateSampleWorkouts() as unknown as T;
-        }
+      if (error.name === 'AbortError') {
+        console.error(`Request to ${url} timed out`);
+        throw new Error(`Request timed out: ${method} ${endpoint}`);
       }
       
-      // Only retry on network errors, not on API errors
-      if (retries > 0 && (error.message?.includes('Failed to fetch') || error.name === 'TypeError' || error.name === 'AbortError')) {
-        console.log(`Retrying API request (${retries} retries left): ${endpoint}`);
+      if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+        console.error(`Network error for ${method} ${url}`, {
+          method,
+          url,
+          isProduction,
+          useLocalBackend,
+          backendBaseUrl,
+          endpoint
+        });
+        throw new Error(`Network error: Unable to connect to ${isProduction ? 'production' : 'development'} server. ${
+          isProduction 
+            ? 'Please check your internet connection and try again.' 
+            : useLocalBackend 
+              ? 'Is your local backend server running?' 
+              : 'Is your remote server accessible?'
+        }`);
+      }
+      
+      // For other errors, log and rethrow
+      console.error(`Error in ${method} request to ${endpoint}:`, error);
+      
+      if (retries > 0) {
+        console.log(`Retrying ${method} ${endpoint} (${retries} attempts left)...`);
         await new Promise(resolve => setTimeout(resolve, retryDelay));
         return fetchWithRetry(retries - 1);
-      }
-      
-      // If we've exhausted retries and still failed, use fallback data
-      if (endpoint.includes('/clients')) {
-        console.error(`All retries failed for ${endpoint} - using fallback client data`);
-        return generateSampleClients() as unknown as T;
-      } else if (endpoint.includes('/workouts')) {
-        console.error(`All retries failed for ${endpoint} - using fallback workout data`);
-        return generateSampleWorkouts() as unknown as T;
       }
       
       throw error;
