@@ -1,22 +1,21 @@
 import { getJwtToken } from './tokenHelper';
+import { getBaseApiUrl, getApiUrl } from './apiUtils';
 
 // Debug environment variables to ensure correct configuration
 console.log('API Client Environment Variables:', {
   NEXT_PUBLIC_BACKEND_URL: process.env.NEXT_PUBLIC_BACKEND_URL || '(not set)',
   NEXT_PUBLIC_USE_LOCAL_BACKEND: process.env.NEXT_PUBLIC_USE_LOCAL_BACKEND || '(not set)',
   NEXT_PUBLIC_USE_FALLBACK_ROLES: process.env.NEXT_PUBLIC_USE_FALLBACK_ROLES || '(not set)',
+  NEXT_PUBLIC_API_PATH_PREFIX: process.env.NEXT_PUBLIC_API_PATH_PREFIX || '(not set)',
   NODE_ENV: process.env.NODE_ENV || '(not set)'
 });
 
-// Update API base URL to use the same configuration logic as in authContext.tsx
-// Determine backend URL from environment variables
+// Determine backend URL for local development
 const useLocalBackend = process.env.NEXT_PUBLIC_USE_LOCAL_BACKEND === 'true';
-const cloudBackendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://trainers-memory.onrender.com';
 const localBackendUrl = 'http://localhost:8000';
-const backendBaseUrl = useLocalBackend ? localBackendUrl : cloudBackendUrl;
-const API_BASE_URL = `${backendBaseUrl}/api/v1`;
+const backendBaseUrl = useLocalBackend ? localBackendUrl : getBaseApiUrl();
 
-console.log('API client using backend URL:', API_BASE_URL);
+console.log('API client using backend URL:', backendBaseUrl);
 
 type RequestOptions = {
   method?: string;
@@ -63,7 +62,13 @@ async function checkBackendAvailability(): Promise<boolean> {
     const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
     
     // Use the health endpoint for checking backend availability
-    const healthUrl = `${backendBaseUrl}/health`;
+    let healthUrl;
+    if (useLocalBackend) {
+      healthUrl = `${localBackendUrl}/health`;
+    } else {
+      healthUrl = `${getBaseApiUrl()}/health`;
+    }
+    
     console.log(`Trying health check at: ${healthUrl}`);
     
     const response = await fetch(healthUrl, {
@@ -114,7 +119,16 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
     skipCache = false,
   } = options;
 
-  const url = `${API_BASE_URL}${endpoint}`;
+  // Use the appropriate URL based on the environment
+  let url;
+  if (useLocalBackend) {
+    // For local development, use the local backend URL
+    url = `${localBackendUrl}${endpoint}`;
+  } else {
+    // For production or non-local environments, use the getApiUrl utility
+    url = getApiUrl(endpoint);
+  }
+  
   const token = getJwtToken();
   const cacheEnabled = cache !== false; // Cache enabled by default
   const maxRetries = retries; // Use the provided retries

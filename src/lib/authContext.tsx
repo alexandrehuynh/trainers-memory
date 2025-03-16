@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, ReactNode } from 'react
 import { User, Session } from '@supabase/supabase-js';
 import { useRouter } from 'next/navigation';
 import { supabase } from './supabaseClient';
+import { getApiUrl } from './apiUtils';
 
 interface UserRole {
   role: string;
@@ -49,16 +50,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Determine backend URL 
       const useLocalBackend = process.env.NEXT_PUBLIC_USE_LOCAL_BACKEND === 'true';
-      const cloudBackendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://trainers-memory.onrender.com';
       const localBackendUrl = 'http://localhost:8000';
-      const backendUrl = useLocalBackend ? localBackendUrl : cloudBackendUrl;
       
       // Check if we're using Supabase user metadata instead of backend API
       const useFallback = process.env.NEXT_PUBLIC_USE_FALLBACK_ROLES === 'true';
       
       // Log the current backend configuration for debugging
       console.log('Auth backend config:', { 
-        backendUrl, 
         useLocalBackend, 
         useFallback 
       });
@@ -100,14 +98,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       // Try to fetch from backend API if fallback is not enabled
       try {
-        const response = await fetch(`${backendUrl}/api/v1/auth/user`, {
+        // Use the local URL if specified, otherwise use the API utility to build the URL
+        const apiUrl = useLocalBackend 
+          ? `${localBackendUrl}/auth/user` 
+          : getApiUrl('/auth/user');
+          
+        console.log(`Fetching user role from: ${apiUrl}`);
+
+        const response = await fetch(apiUrl, {
           headers: {
             'Authorization': `Bearer ${token}`,
             'Content-Type': 'application/json'
           }
         });
 
-        console.log(`Backend API request to ${backendUrl}/api/v1/auth/user:`, response.status);
+        console.log(`Backend API request status:`, response.status);
 
         if (response.ok) {
           const data = await response.json();
@@ -343,14 +348,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error) {
         // If Supabase refresh fails, try our custom backend refresh
         if (session?.refresh_token) {
-          // Determine backend URL (same logic as fetchUserRole)
+          // Determine if we should use local backend
           const useLocalBackend = process.env.NEXT_PUBLIC_USE_LOCAL_BACKEND === 'true';
-          const cloudBackendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://trainers-memory.onrender.com';
           const localBackendUrl = 'http://localhost:8000';
-          const backendUrl = useLocalBackend ? localBackendUrl : cloudBackendUrl;
           
           try {
-            const response = await fetch(`${backendUrl}/api/v1/auth/refresh`, {
+            // Use the local URL if specified, otherwise use the API utility
+            const apiUrl = useLocalBackend 
+              ? `${localBackendUrl}/auth/refresh` 
+              : getApiUrl('/auth/refresh');
+              
+            console.log(`Refreshing token using: ${apiUrl}`);
+            
+            const response = await fetch(apiUrl, {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
