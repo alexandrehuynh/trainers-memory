@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/authContext';
 import Card from '@/components/ui/Card';
@@ -32,11 +32,12 @@ interface WorkoutTemplate {
   createdAt: Date;
 }
 
-export default function NewWorkoutPage() {
+// Create a client component that uses useSearchParams
+function WorkoutPageContent() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const clientIdParam = searchParams.get('clientId');
+  const clientIdParam = searchParams?.get('clientId') || null;
   
   const [clients, setClients] = useState<Client[]>([]);
   const [formData, setFormData] = useState<WorkoutFormData>({
@@ -547,5 +548,18 @@ export default function NewWorkoutPage() {
         </Card>
       )}
     </div>
+  );
+}
+
+// Main page component that wraps the content in a Suspense boundary
+export default function NewWorkoutPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    }>
+      <WorkoutPageContent />
+    </Suspense>
   );
 } 

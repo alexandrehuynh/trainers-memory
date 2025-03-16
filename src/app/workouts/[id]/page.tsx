@@ -15,7 +15,7 @@ export default function WorkoutDetailPage() {
   const { user, isLoading: authLoading } = useAuth();
   const params = useParams();
   const router = useRouter();
-  const workoutId = params.id as string;
+  const workoutId = params?.id as string || '';
   
   const [workout, setWorkout] = useState<Workout | null>(null);
   const [isLoading, setIsLoading] = useState(true);

@@ -1,3 +1,5 @@
+const path = require('path');
+
 module.exports = {
   presets: ['next/babel'],
   plugins: [
@@ -16,8 +18,15 @@ module.exports = {
           '.jsx',
           '.ts',
           '.tsx',
+          '.json'
         ]
       }
     ]
+  ],
+  overrides: [
+    {
+      include: ["./node_modules/next/font/**/*.js"],
+      plugins: []
+    }
   ]
 }; 

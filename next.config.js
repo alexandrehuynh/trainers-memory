@@ -22,19 +22,6 @@ const nextConfig = {
     
     return config;
   },
-  // Explicitly define routes to ensure they're recognized
-  async rewrites() {
-    return [
-      {
-        source: '/signin',
-        destination: '/signin',
-      },
-      {
-        source: '/login',
-        destination: '/login',
-      },
-    ];
-  },
 };
 
 module.exports = nextConfig; 

@@ -21,6 +21,9 @@ interface AuthContextType {
   isLoading: boolean;
   userRole: UserRole | null;
   signIn: (email: string) => Promise<{ error: Error | null; success: boolean }>;
+  // Add password authentication methods (commented out until Supabase is configured)
+  // signInWithPassword: (email: string, password: string) => Promise<{ error: Error | null; success: boolean }>;
+  // register: (email: string, password: string) => Promise<{ error: Error | null; success: boolean }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: Error | null; success: boolean }>;
   refreshToken: () => Promise<boolean>;
@@ -223,6 +226,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return userRole.permissions.includes(permission);
   };
 
+  // Uncomment and implement this when ready to add password authentication
+  // const signInWithPassword = async (email: string, password: string) => {
+  //   try {
+  //     const { data, error } = await supabase.auth.signInWithPassword({
+  //       email,
+  //       password,
+  //     });
+  //     if (error) {
+  //       return { error, success: false };
+  //     }
+  //     return { error: null, success: true };
+  //   } catch (error) {
+  //     return { error: error as Error, success: false };
+  //   }
+  // }
+
+  // const register = async (email: string, password: string) => {
+  //   try {
+  //     const { data, error } = await supabase.auth.signUp({
+  //       email,
+  //       password,
+  //     });
+  //     if (error) {
+  //       return { error, success: false };
+  //     }
+  //     // Note: Supabase may require email confirmation depending on your settings
+  //     return { error: null, success: true };
+  //   } catch (error) {
+  //     return { error: error as Error, success: false };
+  //   }
+  // }
+
   return (
     <AuthContext.Provider value={{ 
       user, 
@@ -230,6 +265,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isLoading, 
       userRole,
       signIn, 
+      // signInWithPassword, // Uncomment when implementing password auth
+      // register, // Uncomment when implementing registration
       signOut, 
       resetPassword,
       refreshToken,

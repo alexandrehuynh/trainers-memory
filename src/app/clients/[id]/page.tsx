@@ -23,7 +23,7 @@ export default function ClientDetailPage() {
   const { user, isLoading: authLoading } = useAuth();
   const params = useParams();
   const router = useRouter();
-  const clientId = params.id as string;
+  const clientId = params?.id as string || '';
   
   const [client, setClient] = useState<Client | null>(null);
   const [isLoading, setIsLoading] = useState(true);

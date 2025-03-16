@@ -22,7 +22,7 @@ export default function EditWorkoutPage() {
   const { user, isLoading: authLoading } = useAuth();
   const params = useParams();
   const router = useRouter();
-  const workoutId = params.id as string;
+  const workoutId = params?.id as string || '';
   
   const [clients, setClients] = useState<Client[]>([]);
   const [formData, setFormData] = useState<WorkoutFormData>({
