@@ -100,8 +100,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       try {
         // Use the local URL if specified, otherwise use the API utility to build the URL
         const apiUrl = useLocalBackend 
-          ? `${localBackendUrl}/auth/user` 
-          : getApiUrl('/auth/user');
+          ? `${localBackendUrl}/api/v1/auth/user` 
+          : getApiUrl('/api/v1/auth/user');
           
         console.log(`Fetching user role from: ${apiUrl}`);
 

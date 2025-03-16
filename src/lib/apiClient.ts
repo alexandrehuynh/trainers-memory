@@ -66,6 +66,7 @@ async function checkBackendAvailability(): Promise<boolean> {
     if (useLocalBackend) {
       healthUrl = `${localBackendUrl}/health`;
     } else {
+      // The health endpoint is at /health without any API version prefix in the backend
       healthUrl = `${getBaseApiUrl()}/health`;
     }
     
@@ -119,14 +120,21 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
     skipCache = false,
   } = options;
 
+  // Ensure endpoint has the API version prefix if it doesn't already include it
+  const apiEndpoint = endpoint.startsWith('/api/v1') ? 
+    endpoint : 
+    endpoint.startsWith('/') ? 
+      `/api/v1${endpoint}` : 
+      `/api/v1/${endpoint}`;
+
   // Use the appropriate URL based on the environment
   let url;
   if (useLocalBackend) {
     // For local development, use the local backend URL
-    url = `${localBackendUrl}${endpoint}`;
+    url = `${localBackendUrl}${apiEndpoint}`;
   } else {
     // For production or non-local environments, use the getApiUrl utility
-    url = getApiUrl(endpoint);
+    url = getApiUrl(apiEndpoint);
   }
   
   const token = getJwtToken();

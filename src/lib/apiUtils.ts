@@ -7,6 +7,7 @@
  */
 export function getBaseApiUrl(): string {
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://trainers-memory.onrender.com';
+  // API path prefix should be empty as we're now using the full path with version in individual API calls
   const pathPrefix = process.env.NEXT_PUBLIC_API_PATH_PREFIX || '';
   
   // Remove trailing slash from backend URL if present
@@ -20,7 +21,7 @@ export function getBaseApiUrl(): string {
 /**
  * Generate a complete API endpoint URL
  * 
- * @param endpoint - The API endpoint path (e.g., "/auth/user")
+ * @param endpoint - The API endpoint path (e.g., "/api/v1/auth/user")
  * @returns Complete API URL
  */
 export function getApiUrl(endpoint: string): string {
