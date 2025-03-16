@@ -61,7 +61,7 @@ REQUIRED_SCHEMA = {
         ]
     },
     'workouts': {
-        'columns': ['id', 'client_id', 'date', 'name', 'type', 'notes', 'created_at', 'updated_at'],
+        'columns': ['id', 'client_id', 'date', 'type', 'duration', 'notes', 'created_at', 'updated_at'],
         'indexes': ['workouts_pkey', 'ix_workouts_client_id', 'ix_workouts_date'],
         'foreign_keys': [
             {'column': 'client_id', 'references_table': 'clients', 'references_column': 'id'}

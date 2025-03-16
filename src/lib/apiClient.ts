@@ -10,12 +10,14 @@ console.log('API Client Environment Variables:', {
   NODE_ENV: process.env.NODE_ENV || '(not set)'
 });
 
-// Determine backend URL for local development
-const useLocalBackend = process.env.NEXT_PUBLIC_USE_LOCAL_BACKEND === 'true';
+// Determine backend URL based on environment
+const isProduction = process.env.NODE_ENV === 'production';
+const useLocalBackend = !isProduction && process.env.NEXT_PUBLIC_USE_LOCAL_BACKEND === 'true';
 const localBackendUrl = 'http://localhost:8000';
 const backendBaseUrl = useLocalBackend ? localBackendUrl : getBaseApiUrl();
 
 console.log('API client using backend URL:', backendBaseUrl);
+console.log('Environment:', isProduction ? 'PRODUCTION' : 'DEVELOPMENT');
 
 type RequestOptions = {
   method?: string;
@@ -63,10 +65,14 @@ async function checkBackendAvailability(): Promise<boolean> {
     
     // Use the health endpoint for checking backend availability
     let healthUrl;
-    if (useLocalBackend) {
+    if (isProduction) {
+      // In production, always use the production backend URL
+      healthUrl = `${getBaseApiUrl()}/health`;
+    } else if (useLocalBackend) {
+      // For local development with local backend flag enabled
       healthUrl = `${localBackendUrl}/health`;
     } else {
-      // The health endpoint is at /health without any API version prefix in the backend
+      // For other non-production environments
       healthUrl = `${getBaseApiUrl()}/health`;
     }
     
@@ -129,11 +135,14 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
 
   // Use the appropriate URL based on the environment
   let url;
-  if (useLocalBackend) {
-    // For local development, use the local backend URL
+  if (isProduction) {
+    // In production, always use the production backend URL
+    url = getApiUrl(apiEndpoint);
+  } else if (useLocalBackend) {
+    // For local development with local backend flag enabled
     url = `${localBackendUrl}${apiEndpoint}`;
   } else {
-    // For production or non-local environments, use the getApiUrl utility
+    // For other non-production environments, use the configured backend URL
     url = getApiUrl(apiEndpoint);
   }
   

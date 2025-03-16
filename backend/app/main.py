@@ -73,6 +73,7 @@ origins = [
     "http://127.0.0.1:3000",     # Alternative localhost
     "https://trainers-memory.vercel.app",  # Deployed frontend
     "https://trainers-memory-git-main.vercel.app",  # Vercel preview deployments
+    "https://trainers-memory-git-*.vercel.app",  # All Vercel preview deployments for git branches
     "https://*.vercel.app",      # Any Vercel preview deployment
     "http://localhost:8000",     # FastAPI backend (for docs)
     "http://127.0.0.1:8000",     # Alternative localhost
@@ -89,11 +90,11 @@ if additional_origins and additional_origins[0]:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"] if allow_all_origins else origins,  # Use explicit origins in production
-    allow_origin_regex=os.getenv("CORS_ORIGIN_REGEX", None),  # Can be set via environment
+    allow_origin_regex=os.getenv("CORS_ORIGIN_REGEX", r"https://trainers-memory.*\.vercel\.app"),  # Regex for Vercel preview deployments
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],  # Be explicit about allowed methods
-    allow_headers=["Content-Type", "Authorization", API_KEY_NAME, "X-Requested-With", "Accept"],  # Be explicit about allowed headers
-    expose_headers=[API_KEY_NAME, "Content-Length"],  # Expose only necessary headers
+    allow_headers=["Content-Type", "Authorization", API_KEY_NAME, "X-Requested-With", "Accept", "Origin"],  # Be explicit about allowed headers
+    expose_headers=[API_KEY_NAME, "Content-Length", "Access-Control-Allow-Origin"],  # Expose necessary headers
     max_age=86400,  # 24 hours
 )
 
