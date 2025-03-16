@@ -79,15 +79,22 @@ origins = [
     # Add any other origins as needed
 ]
 
+# Get CORS configuration from environment variables if available
+allow_all_origins = os.getenv("CORS_ALLOW_ALL", "false").lower() == "true"
+additional_origins = os.getenv("CORS_ADDITIONAL_ORIGINS", "").split(",")
+if additional_origins and additional_origins[0]:
+    origins.extend([origin.strip() for origin in additional_origins])
+
+# Configure CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],         # Allow all origins temporarily
-    allow_origin_regex=".*",     # Allow any origin with regex
+    allow_origins=["*"] if allow_all_origins else origins,  # Use explicit origins in production
+    allow_origin_regex=os.getenv("CORS_ORIGIN_REGEX", None),  # Can be set via environment
     allow_credentials=True,
-    allow_methods=["*"],         # Allow all methods
-    allow_headers=["*"],         # Allow all headers
-    expose_headers=["*"],        # Expose all headers
-    max_age=86400,               # 24 hours
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],  # Be explicit about allowed methods
+    allow_headers=["Content-Type", "Authorization", API_KEY_NAME, "X-Requested-With", "Accept"],  # Be explicit about allowed headers
+    expose_headers=[API_KEY_NAME, "Content-Length"],  # Expose only necessary headers
+    max_age=86400,  # 24 hours
 )
 
 # Add custom error handling middleware

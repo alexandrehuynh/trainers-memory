@@ -12,6 +12,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import update, delete, text
 from .models import User, Client, Workout, Exercise, APIKey, WorkoutTemplate, TemplateExercise
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Generic type for models
 T = TypeVar('T')
@@ -526,38 +529,70 @@ class AsyncAPIKeyRepository(AsyncBaseRepository[APIKey]):
             )
             return result.scalars().first()
         except Exception as e:
-            print(f"Error in get_by_key: {e}")
+            logger.error(f"Error in get_by_key using ORM: {e}")
             # If there's an error, try a direct SQL query as a fallback
             try:
-                result = await self.session.execute(
-                    text("SELECT id, key, client_id, name, active FROM api_keys WHERE key = :key AND active = true")
-                    .bindparams(key=key)
-                )
-                row = result.fetchone()
-                if row:
-                    # Create a simple APIKey object with the available fields
-                    api_key = APIKey()
-                    api_key.id = row[0]
-                    api_key.key = row[1]
-                    api_key.client_id = row[2]
-                    api_key.name = row[3]
-                    api_key.active = row[4]
-                    return api_key
+                # First, try with user_id included
+                try:
+                    result = await self.session.execute(
+                        text("SELECT id, key, client_id, user_id, name, active FROM api_keys WHERE key = :key AND active = true")
+                        .bindparams(key=key)
+                    )
+                    row = result.fetchone()
+                    
+                    if row:
+                        # Create a simple APIKey object with the available fields
+                        api_key = APIKey()
+                        api_key.id = row[0]
+                        api_key.key = row[1]
+                        api_key.client_id = row[2]
+                        api_key.user_id = row[3]
+                        api_key.name = row[4]
+                        api_key.active = row[5]
+                        return api_key
+                except Exception as column_e:
+                    logger.warning(f"Error in fallback query with user_id: {column_e}")
+                    
+                    # If that fails (possibly due to missing user_id column), try without user_id
+                    result = await self.session.execute(
+                        text("SELECT id, key, client_id, name, active FROM api_keys WHERE key = :key AND active = true")
+                        .bindparams(key=key)
+                    )
+                    row = result.fetchone()
+                    
+                    if row:
+                        # Create a simple APIKey object with the available fields
+                        api_key = APIKey()
+                        api_key.id = row[0]
+                        api_key.key = row[1]
+                        api_key.client_id = row[2]
+                        api_key.name = row[3]
+                        api_key.active = row[4]
+                        # user_id is intentionally not set here as the column doesn't exist
+                        return api_key
                 return None
             except Exception as inner_e:
-                print(f"Error in fallback query: {inner_e}")
+                logger.error(f"Error in all fallback queries: {inner_e}")
                 return None
     
     async def get_by_client(self, client_id: UUID, user_id: UUID = None) -> List[APIKey]:
         """Get all API keys for a client with optional user isolation."""
-        query = select(APIKey).where(APIKey.client_id == client_id)
-        
-        # Apply user isolation unless user_id is None (admin bypass)
-        if user_id is not None:
-            query = query.where(APIKey.user_id == user_id)
+        try:
+            query = select(APIKey).where(APIKey.client_id == client_id)
             
-        result = await self.session.execute(query)
-        return result.scalars().all()
+            # Apply user isolation unless user_id is None (admin bypass)
+            if user_id is not None:
+                try:
+                    query = query.where(APIKey.user_id == user_id)
+                except Exception as e:
+                    logger.warning(f"Error applying user_id filter: {e}")
+                    # Continue without user_id filter if there's an error
+                    
+            result = await self.session.execute(query)
+            return result.scalars().all()
+        except Exception as e:
+            logger.error(f"Error in get_by_client: {e}")
+            return []
     
     async def get_all(self, skip: int = 0, limit: int = 100, user_id: UUID = None) -> List[APIKey]:
         """Get all API keys with pagination and optional user isolation."""
