@@ -266,7 +266,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signIn = async (email: string) => {
     try {
-      const { error } = await supabase.auth.signInWithOtp({ email });
+      // Get the appropriate site URL for the current environment
+      const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 
+        (process.env.NODE_ENV === 'production' 
+          ? 'https://trainers-memory.vercel.app' 
+          : 'http://localhost:3000');
+      
+      console.log(`Using redirect URL: ${siteUrl}`); // For debugging
+      
+      const { error } = await supabase.auth.signInWithOtp({ 
+        email,
+        options: {
+          emailRedirectTo: `${siteUrl}/auth/callback`
+        }
+      });
+      
       if (error) {
         throw error;
       }
