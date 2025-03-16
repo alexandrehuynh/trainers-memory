@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from datetime import datetime
 import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
+import logging
 
 # Import API key dependency and standard response
 from ..auth_utils import validate_api_key
@@ -14,6 +15,9 @@ from ..db import (
     AsyncClientRepository,
     get_async_db
 )
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 # Define models
 class ExerciseBase(BaseModel):
@@ -89,65 +93,106 @@ async def get_workouts(
     - **limit**: Maximum number of workouts to return (pagination)
     - **client_id**: Optional filter to show only workouts for a specific client
     """
-    workout_repo = AsyncWorkoutRepository(db)
-    client_repo = AsyncClientRepository(db)
-    exercise_repo = AsyncExerciseRepository(db)
-    
-    # Get workouts (filtered by client_id if provided)
-    if client_id:
-        workouts_list = await workout_repo.get_by_client(
-            uuid.UUID(client_id), skip=skip, limit=limit
+    try:
+        logger.info("GET /workouts/ endpoint called")
+        logger.info(f"client_info: {client_info}")
+        
+        workout_repo = AsyncWorkoutRepository(db)
+        client_repo = AsyncClientRepository(db)
+        exercise_repo = AsyncExerciseRepository(db)
+        
+        # Get the user_id from client_info for data isolation
+        # If user_id is not available, use the client_id as a fallback
+        user_id = client_info.get("user_id")
+        if user_id is None:
+            logger.info("No user_id in client_info, using client_id as fallback")
+            # For the test API key, use a default admin user ID
+            if client_info.get("api_key_id") == "00000000-0000-0000-0000-000000000099":
+                user_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
+                logger.info(f"Using default admin user_id for test API key: {user_id}")
+            else:
+                # Use the client_id as a fallback
+                user_id = client_info.get("client_id")
+                logger.info(f"Using client_id as fallback for user_id: {user_id}")
+        
+        logger.info(f"user_id: {user_id}")
+        
+        # Get workouts (filtered by client_id if provided)
+        if client_id:
+            logger.info(f"Filtering by client_id: {client_id}")
+            # First verify the client belongs to this user
+            client = await client_repo.get_by_id(uuid.UUID(client_id), user_id=user_id)
+            if not client:
+                logger.warning(f"Client with ID {client_id} not found")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Client with ID {client_id} not found"
+                )
+                
+            workouts_list = await workout_repo.get_by_client(
+                uuid.UUID(client_id), skip=skip, limit=limit
+            )
+            total_count = len(workouts_list)
+        else:
+            logger.info(f"Getting all workouts for user_id: {user_id}")
+            workouts_list = await workout_repo.get_all(skip=skip, limit=limit, user_id=user_id)
+            total_count = len(workouts_list)
+        
+        logger.info(f"Found {total_count} workouts")
+        
+        # Convert to API response format with client names
+        serialized_workouts = []
+        for workout in workouts_list:
+            try:
+                # Get client name
+                client = await client_repo.get_by_id(workout.client_id, user_id=user_id)
+                client_name = client.name if client else "Unknown Client"
+                
+                # Get exercises for this workout
+                exercises = await exercise_repo.get_by_workout(workout.id)
+                serialized_exercises = []
+                for exercise in exercises:
+                    serialized_exercises.append({
+                        "id": str(exercise.id),
+                        "name": exercise.name,
+                        "sets": exercise.sets,
+                        "reps": exercise.reps,
+                        "weight": float(exercise.weight),
+                        "notes": exercise.notes or ""
+                    })
+                
+                # Format workout data
+                serialized_workouts.append({
+                    "id": str(workout.id),
+                    "client_id": str(workout.client_id),
+                    "client_name": client_name,
+                    "date": workout.date.isoformat() if isinstance(workout.date, datetime) else workout.date,
+                    "type": workout.type,
+                    "duration": workout.duration,
+                    "notes": workout.notes or "",
+                    "exercises": serialized_exercises,
+                    "created_at": workout.created_at.isoformat() if workout.created_at else None
+                })
+            except Exception as e:
+                logger.error(f"Error processing workout {workout.id}: {str(e)}")
+                raise
+        
+        # Sort by date (newest first)
+        serialized_workouts.sort(key=lambda x: x["date"], reverse=True)
+        
+        logger.info("Successfully processed workouts")
+        return StandardResponse.success(
+            data={
+                "workouts": serialized_workouts,
+                "total": total_count,
+                "skip": skip,
+                "limit": limit
+            },
+            message="Workouts retrieved successfully"
         )
-        total_count = len(workouts_list)  # In a real implementation, you would get the total count from the database
-    else:
-        workouts_list = await workout_repo.get_all(skip=skip, limit=limit)
-        total_count = len(workouts_list)  # In a real implementation, you would get the total count from the database
-    
-    # Convert to API response format with client names
-    serialized_workouts = []
-    for workout in workouts_list:
-        # Get client name
-        client = await client_repo.get_by_id(workout.client_id)
-        client_name = client.name if client else "Unknown Client"
-        
-        # Get exercises for this workout
-        exercises = await exercise_repo.get_by_workout(workout.id)
-        serialized_exercises = []
-        for exercise in exercises:
-            serialized_exercises.append({
-                "id": str(exercise.id),
-                "name": exercise.name,
-                "sets": exercise.sets,
-                "reps": exercise.reps,
-                "weight": float(exercise.weight),
-                "notes": exercise.notes or ""
-            })
-        
-        # Format workout data
-        serialized_workouts.append({
-            "id": str(workout.id),
-            "client_id": str(workout.client_id),
-            "client_name": client_name,
-            "date": workout.date.isoformat() if isinstance(workout.date, datetime) else workout.date,
-            "type": workout.type,
-            "duration": workout.duration,
-            "notes": workout.notes or "",
-            "exercises": serialized_exercises,
-            "created_at": workout.created_at.isoformat() if workout.created_at else None
-        })
-    
-    # Sort by date (newest first)
-    serialized_workouts.sort(key=lambda x: x["date"], reverse=True)
-    
-    return StandardResponse.success(
-        data={
-            "workouts": serialized_workouts,
-            "total": total_count,
-            "skip": skip,
-            "limit": limit
-        },
-        message="Workouts retrieved successfully"
-    )
+    except Exception as e:
+        logger.error(f"Error in get_workouts: {str(e)}")
+        raise
 
 # GET /workouts/{workout_id} - Get a specific workout
 @router.get("/{workout_id}", response_model=Dict[str, Any])
@@ -165,8 +210,11 @@ async def get_workout(
     client_repo = AsyncClientRepository(db)
     exercise_repo = AsyncExerciseRepository(db)
     
-    # Get workout
-    workout = await workout_repo.get_by_id(uuid.UUID(workout_id))
+    # Get the user_id from client_info for data isolation
+    user_id = client_info.get("user_id")
+    
+    # Get workout with user isolation
+    workout = await workout_repo.get_by_id(uuid.UUID(workout_id), user_id=user_id)
     if not workout:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -174,7 +222,7 @@ async def get_workout(
         )
     
     # Get client name
-    client = await client_repo.get_by_id(workout.client_id)
+    client = await client_repo.get_by_id(workout.client_id, user_id=user_id)
     client_name = client.name if client else "Unknown Client"
     
     # Get exercises for this workout
@@ -224,8 +272,11 @@ async def create_workout(
     client_repo = AsyncClientRepository(db)
     exercise_repo = AsyncExerciseRepository(db)
     
-    # Validate client exists
-    client = await client_repo.get_by_id(uuid.UUID(workout.client_id))
+    # Get the user_id from client_info for data isolation
+    user_id = client_info.get("user_id")
+    
+    # Validate client exists and belongs to this user
+    client = await client_repo.get_by_id(uuid.UUID(workout.client_id), user_id=user_id)
     if not client:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -301,8 +352,11 @@ async def update_workout(
     client_repo = AsyncClientRepository(db)
     exercise_repo = AsyncExerciseRepository(db)
     
-    # Check if workout exists
-    workout = await workout_repo.get_by_id(uuid.UUID(workout_id))
+    # Get the user_id from client_info for data isolation
+    user_id = client_info.get("user_id")
+    
+    # Check if workout exists and belongs to this user
+    workout = await workout_repo.get_by_id(uuid.UUID(workout_id), user_id=user_id)
     if not workout:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -311,7 +365,7 @@ async def update_workout(
     
     # Validate client if provided
     if workout_update.client_id:
-        client = await client_repo.get_by_id(uuid.UUID(workout_update.client_id))
+        client = await client_repo.get_by_id(uuid.UUID(workout_update.client_id), user_id=user_id)
         if not client:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -372,7 +426,7 @@ async def update_workout(
             })
     
     # Get client name
-    client = await client_repo.get_by_id(updated_workout.client_id)
+    client = await client_repo.get_by_id(updated_workout.client_id, user_id=user_id)
     client_name = client.name if client else "Unknown Client"
     
     # Prepare response
@@ -408,8 +462,11 @@ async def delete_workout(
     """
     workout_repo = AsyncWorkoutRepository(db)
     
-    # Check if workout exists
-    workout = await workout_repo.get_by_id(uuid.UUID(workout_id))
+    # Get the user_id from client_info for data isolation
+    user_id = client_info.get("user_id")
+    
+    # Check if workout exists and belongs to this user
+    workout = await workout_repo.get_by_id(uuid.UUID(workout_id), user_id=user_id)
     if not workout:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

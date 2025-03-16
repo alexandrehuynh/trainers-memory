@@ -2,14 +2,25 @@ import uvicorn
 import os
 import signal
 import sys
+import logging
 from dotenv import load_dotenv
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
 
 def handle_exit(signum, frame):
     """Handle exit signals gracefully."""
-    print("\nShutting down gracefully...")
+    logger.info("Shutting down gracefully...")
     sys.exit(0)
 
 if __name__ == "__main__":
@@ -20,9 +31,9 @@ if __name__ == "__main__":
     # Get port from environment variable or use default
     port = int(os.getenv("PORT", 8000))
     
-    print(f"Starting server on port {port} at host 0.0.0.0...")
-    print(f"To check if port is open, you can run: curl http://localhost:{port}/docs")
-    print("Using PostgreSQL database")
+    logger.info(f"Starting server on port {port} at host 0.0.0.0...")
+    logger.info(f"To check if port is open, you can run: curl http://localhost:{port}/docs")
+    logger.info("Using PostgreSQL database")
     
     try:
         # Start the API server
@@ -30,12 +41,12 @@ if __name__ == "__main__":
             "app.main:app",
             host="0.0.0.0",
             port=port,
-            log_level="info"
+            log_level="debug"  # Changed from info to debug for more detailed logs
         )
     except KeyboardInterrupt:
         # Handle KeyboardInterrupt gracefully
-        print("\nReceived keyboard interrupt. Shutting down...")
+        logger.info("Received keyboard interrupt. Shutting down...")
     except Exception as e:
-        print(f"Error starting server: {e}")
+        logger.error(f"Error starting server: {e}")
     finally:
-        print("Server shutdown complete.") 
+        logger.info("Server shutdown complete.") 

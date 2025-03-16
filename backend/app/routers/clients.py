@@ -62,7 +62,10 @@ async def get_clients(
     - **limit**: Maximum number of clients to return (pagination)
     """
     client_repo = AsyncClientRepository(db)
-    clients_list = await client_repo.get_all(skip=skip, limit=limit)
+    
+    # Get the user_id from client_info for data isolation
+    user_id = client_info.get("user_id")
+    clients_list = await client_repo.get_all(skip=skip, limit=limit, user_id=user_id)
     
     # Convert database models to Pydantic models for serialization
     serialized_clients = []
@@ -95,7 +98,10 @@ async def get_client(
     - **client_id**: UUID of the client to retrieve
     """
     client_repo = AsyncClientRepository(db)
-    client = await client_repo.get_by_id(client_id)
+    
+    # Get the user_id from client_info for data isolation
+    user_id = client_info.get("user_id")
+    client = await client_repo.get_by_id(client_id, user_id=user_id)
     
     if not client:
         raise HTTPException(
@@ -129,18 +135,22 @@ async def create_client(
     """Create a new client."""
     client_repo = AsyncClientRepository(db)
     
-    # Check if client with this email already exists
-    existing_client = await client_repo.get_by_email(client.email)
+    # Get the user_id from client_info for data isolation
+    user_id = client_info.get("user_id")
+    
+    # Check if client with this email already exists for this user
+    existing_client = await client_repo.get_by_email(client.email, user_id=user_id)
     if existing_client:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Client with email {client.email} already exists"
         )
     
-    # Create client
+    # Create client with user association
     client_data = client.dict()
     client_data["created_at"] = datetime.utcnow()
     client_data["updated_at"] = datetime.utcnow()
+    client_data["user_id"] = user_id  # Add user_id to associate client with current user
     
     db_client = await client_repo.create(client_data)
     
@@ -174,17 +184,20 @@ async def update_client(
     """Update a client by ID."""
     client_repo = AsyncClientRepository(db)
     
-    # Check if client exists
-    client = await client_repo.get_by_id(client_id)
+    # Get the user_id from client_info for data isolation
+    user_id = client_info.get("user_id")
+    
+    # Check if client exists and belongs to this user
+    client = await client_repo.get_by_id(client_id, user_id=user_id)
     if not client:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Client with ID {client_id} not found"
         )
     
-    # Check if email is being updated to one that already exists
+    # Check if email is being updated to one that already exists for this user
     if client_update.email and client_update.email != client.email:
-        existing_client = await client_repo.get_by_email(client_update.email)
+        existing_client = await client_repo.get_by_email(client_update.email, user_id=user_id)
         if existing_client and existing_client.id != client_id:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -223,8 +236,11 @@ async def delete_client(
     """Delete a client by ID."""
     client_repo = AsyncClientRepository(db)
     
-    # Check if client exists
-    client = await client_repo.get_by_id(client_id)
+    # Get the user_id from client_info for data isolation
+    user_id = client_info.get("user_id")
+    
+    # Check if client exists and belongs to this user
+    client = await client_repo.get_by_id(client_id, user_id=user_id)
     if not client:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -248,15 +264,27 @@ async def search_clients_by_name(
     """
     Search for clients by name.
     
-    - **name**: Name or partial name to search for
+    - **name**: Name to search for
     """
-    client_repo = AsyncClientRepository(db)
-    # Add a method in AsyncClientRepository to search by name
-    clients = await client_repo.search_by_name(name)
+    # This is a simplified implementation - a more sophisticated approach would use
+    # a text search feature of the database such as PostgreSQL's full-text search
     
-    # Convert to serializable format
+    # Get the user_id from client_info for data isolation
+    user_id = client_info.get("user_id")
+    
+    # Get all clients and filter by name (not efficient for large databases)
+    client_repo = AsyncClientRepository(db)
+    all_clients = await client_repo.get_all(user_id=user_id)
+    
+    # Filter clients by name (case-insensitive)
+    filtered_clients = [
+        client for client in all_clients
+        if name.lower() in client.name.lower()
+    ]
+    
+    # Convert database models to Pydantic models for serialization
     serialized_clients = []
-    for client in clients:
+    for client in filtered_clients:
         serialized_clients.append({
             "id": str(client.id),
             "name": client.name,
@@ -269,5 +297,5 @@ async def search_clients_by_name(
     
     return StandardResponse.success(
         data={"clients": serialized_clients, "total": len(serialized_clients)},
-        message="Clients found successfully"
+        message=f"Found {len(serialized_clients)} clients matching '{name}'"
     )

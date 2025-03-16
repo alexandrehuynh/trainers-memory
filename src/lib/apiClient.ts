@@ -1,6 +1,14 @@
 import { getJwtToken } from './tokenHelper';
 
-const API_BASE_URL = 'http://localhost:8000/api/v1';
+// Update API base URL to use the same configuration logic as in authContext.tsx
+// Determine backend URL from environment variables
+const useLocalBackend = process.env.NEXT_PUBLIC_USE_LOCAL_BACKEND === 'true';
+const cloudBackendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://trainers-memory.onrender.com';
+const localBackendUrl = 'http://localhost:8000';
+const backendBaseUrl = useLocalBackend ? localBackendUrl : cloudBackendUrl;
+const API_BASE_URL = `${backendBaseUrl}/api/v1`;
+
+console.log('API client using backend URL:', API_BASE_URL);
 
 type RequestOptions = {
   method?: string;

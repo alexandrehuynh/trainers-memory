@@ -6,12 +6,13 @@ This script generates an API key for testing/development and inserts it into the
 It should be run once to set up a test API key.
 
 Usage:
-    python generate_api_key.py [--client_id CLIENT_ID] [--key_name KEY_NAME] [--email EMAIL]
+    python generate_api_key.py [--client_id CLIENT_ID] [--key_name KEY_NAME] [--email EMAIL] [--user_id USER_ID]
 
 Options:
     --client_id    Client ID to associate with the key (default: a test client ID)
     --key_name     Name for the API key (default: "Test API Key")
     --email        Email for the test client (default: a unique generated email)
+    --user_id      User ID to associate with the key (default: a test user ID)
 """
 
 import os
@@ -33,9 +34,9 @@ load_dotenv()
 
 # Import after path setup
 from app.db import Base
-from app.db.models import APIKey, Client
+from app.db.models import APIKey, Client, User
 
-async def create_test_api_key(client_id=None, key_name=None, email=None):
+async def create_test_api_key(client_id=None, key_name=None, email=None, user_id=None):
     """Create a test API key and insert it into the database."""
     # Set default values
     if client_id is None:
@@ -43,6 +44,9 @@ async def create_test_api_key(client_id=None, key_name=None, email=None):
     
     if key_name is None:
         key_name = "Test API Key"
+    
+    if user_id is None:
+        user_id = str(uuid.uuid4())
     
     # Generate a unique email if not provided
     if email is None:
@@ -77,7 +81,27 @@ async def create_test_api_key(client_id=None, key_name=None, email=None):
             # Create tables if they don't exist
             await conn.run_sync(Base.metadata.create_all)
         
-        # First session to create the client
+        # First check if the user exists, if not create it
+        async with async_session() as session:
+            stmt = select(User).where(User.id == user_id)
+            result = await session.execute(stmt)
+            user = result.scalars().first()
+            
+            if not user:
+                print(f"Creating test user with ID: {user_id}")
+                user = User(
+                    id=user_id,
+                    email=f"user-{uuid.uuid4().hex[:8]}@example.com",
+                    role="trainer",
+                    is_active=True,
+                    created_at=datetime.datetime.now(),
+                    updated_at=datetime.datetime.now()
+                )
+                session.add(user)
+                await session.commit()
+                print(f"User created successfully with ID: {user_id}")
+        
+        # Now create the client
         async with async_session() as session:
             # Check if client exists, if not create it
             stmt = select(Client).where(Client.id == client_id)
@@ -91,6 +115,7 @@ async def create_test_api_key(client_id=None, key_name=None, email=None):
                     name="Test Client",
                     email=email,  # Use the provided or generated email
                     phone="555-123-4567",
+                    user_id=user_id,  # Associate client with user
                     created_at=datetime.datetime.now(),
                     updated_at=datetime.datetime.now()
                 )
@@ -98,7 +123,7 @@ async def create_test_api_key(client_id=None, key_name=None, email=None):
                 await session.commit()
                 print(f"Client created successfully with email: {email}")
         
-        # Second session to create the API key
+        # Create the API key
         async with async_session() as session:
             # Verify client was created
             stmt = select(Client).where(Client.id == client_id)
@@ -115,6 +140,7 @@ async def create_test_api_key(client_id=None, key_name=None, email=None):
                 key=api_key,
                 name=key_name,
                 client_id=client_id,
+                user_id=user_id,  # Associate API key with user
                 active=True,
                 created_at=datetime.datetime.now(),
                 last_used_at=None
@@ -128,6 +154,7 @@ async def create_test_api_key(client_id=None, key_name=None, email=None):
         
         return {
             "client_id": client_id,
+            "user_id": user_id,
             "api_key": api_key,
             "key_name": key_name,
             "email": email
@@ -145,6 +172,7 @@ async def main():
     parser.add_argument('--client_id', help='Client ID to associate with the key')
     parser.add_argument('--key_name', help='Name for the API key')
     parser.add_argument('--email', help='Email for the test client')
+    parser.add_argument('--user_id', help='User ID to associate with the key')
     args = parser.parse_args()
     
     print("Generating API key...")
@@ -153,12 +181,14 @@ async def main():
     key_info = await create_test_api_key(
         client_id=args.client_id,
         key_name=args.key_name,
-        email=args.email
+        email=args.email,
+        user_id=args.user_id
     )
     
     # Display results
     print("\nAPI Key Generated Successfully!")
     print("==============================")
+    print(f"User ID:   {key_info['user_id']}")
     print(f"Client ID: {key_info['client_id']}")
     print(f"Client Email: {key_info['email']}")
     print(f"API Key:   {key_info['api_key']}")

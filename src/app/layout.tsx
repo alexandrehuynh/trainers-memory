@@ -1,37 +1,12 @@
-import type { Metadata } from "next";
-// Temporarily commented out font imports to fix build
-// import { Geist, Geist_Mono } from "next/font/google";
-import "./globals.css";
-import { AuthProvider } from "@/lib/authContext";
-import { ThemeProvider } from "@/lib/themeContext";
-import AppContent from "@/components/AppContent";
-
-// Temporary placeholder
-const geistSans = { variable: "--font-geist-sans" };
-const geistMono = { variable: "--font-geist-mono" };
-
-// Original font configuration
-// const geistSans = Geist({
-//   variable: "--font-geist-sans",
-//   subsets: ["latin"],
-// });
-//
-// const geistMono = Geist_Mono({
-//   variable: "--font-geist-mono",
-//   subsets: ["latin"],
-// });
+import { Metadata } from 'next';
+import { ThemeProvider } from '@/lib/themeContext';
+import { AuthProvider } from '@/lib/authContext';
+import AppContent from '@/components/AppContent';
+import './globals.css';
 
 export const metadata: Metadata = {
-  title: "Trainer's Memory",
-  description: "A fitness trainer's assistant application",
-  icons: {
-    icon: [
-      { url: '/favicon_io/favicon.ico' },
-      { url: '/favicon_io/favicon-16x16.png', sizes: '16x16', type: 'image/png' },
-      { url: '/favicon_io/favicon-32x32.png', sizes: '32x32', type: 'image/png' },
-    ],
-    apple: { url: '/favicon_io/apple-touch-icon.png', sizes: '180x180', type: 'image/png' },
-  },
+  title: 'Trainer\'s Memory',
+  description: 'A fitness trainer\'s assistant application',
 };
 
 export default function RootLayout({
@@ -51,7 +26,9 @@ export default function RootLayout({
       <body className="min-h-screen">
         <AuthProvider>
           <ThemeProvider>
-            <AppContent>{children}</AppContent>
+            <AppContent>
+              {children}
+            </AppContent>
           </ThemeProvider>
         </AuthProvider>
       </body>

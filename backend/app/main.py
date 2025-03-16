@@ -15,6 +15,13 @@ from app.utils.response import StandardResponse, API_VERSION
 from app.db import connect_to_db, disconnect_from_db, AsyncAPIKeyRepository, get_async_db
 from sqlalchemy.ext.asyncio import AsyncSession
 
+# Try to import models with error handling
+try:
+    from app.db.models import WorkoutTemplate, TemplateExercise
+except Exception as e:
+    print(f"Warning: Error importing WorkoutTemplate models: {e}")
+    print("The application will continue to run but some features may not work correctly")
+
 # Import authentication utilities
 from app.auth import get_current_user, refresh_token, verify_user_role, verify_permission
 from app.auth_utils import get_api_key, validate_api_key, API_KEY_NAME
@@ -61,6 +68,9 @@ print(f"=== RENDER PORT BINDING: APP WILL USE PORT {port} ===")
 origins = [
     "http://localhost:3000",     # Next.js frontend
     "http://127.0.0.1:3000",     # Alternative localhost
+    "https://trainers-memory.vercel.app",  # Deployed frontend
+    "https://trainers-memory-git-main.vercel.app",  # Vercel preview deployments
+    "https://*.vercel.app",      # Any Vercel preview deployment
     "http://localhost:8000",     # FastAPI backend (for docs)
     "http://127.0.0.1:8000",     # Alternative localhost
     # Add any other origins as needed
@@ -99,7 +109,12 @@ async def root_head():
 # Add a simple health check endpoint
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "time": datetime.now().isoformat()}
+    return {"status": "ok", "timestamp": datetime.now().isoformat()}
+
+# Add a simple test endpoint that doesn't require authentication
+@app.get("/test")
+async def test_endpoint():
+    return {"message": "Test endpoint is working", "timestamp": datetime.now().isoformat()}
 
 # Demo endpoint with authentication - using the alternative validation method for better Swagger UI compatibility
 @app.get(f"/api/{API_VERSION}/me", tags=["Authentication"])
@@ -198,15 +213,7 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:8000/api/v1/me
 ```
 
 ### Available Endpoints
-- `/api/v1/clients` - Client management
-- `/api/v1/workouts` - Workout tracking and management
-- `/api/v1/intelligence` - AI-powered analytics and insights
-- `/api/v1/transformation` - Data transformation services
-- `/api/v1/communication` - Client communication tools
-- `/api/v1/analytics` - Business analytics
-- `/api/v1/coaching` - AI coaching assistance
-- `/api/v1/content` - Content generation
-- `/api/v1/nutrition` - Meal plans and nutrition analysis
+- `/api/v1/clients`
 """
     
     app.openapi_schema = openapi_schema
@@ -214,7 +221,7 @@ curl -H "X-API-Key: YOUR_API_KEY" http://localhost:8000/api/v1/me
 
 app.openapi = custom_openapi
 
-# Mount routers with version prefix
+# Include routers
 app.include_router(
     clients.router,
     prefix=f"/api/{API_VERSION}",
@@ -272,4 +279,4 @@ app.include_router(
 # Entry point
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True) 
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

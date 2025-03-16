@@ -15,7 +15,7 @@ from .config import (
     connect_to_db,
     disconnect_from_db
 )
-from .models import Client, Workout, Exercise, APIKey
+from .models import Client, Workout, Exercise, APIKey, WorkoutTemplate, TemplateExercise
 from .repositories import (
     ClientRepository,
     AsyncClientRepository,
@@ -24,5 +24,9 @@ from .repositories import (
     ExerciseRepository, 
     AsyncExerciseRepository,
     APIKeyRepository,
-    AsyncAPIKeyRepository
+    AsyncAPIKeyRepository,
+    WorkoutTemplateRepository,
+    AsyncWorkoutTemplateRepository,
+    TemplateExerciseRepository,
+    AsyncTemplateExerciseRepository
 ) 
