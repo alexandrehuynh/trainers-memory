@@ -47,7 +47,7 @@ class Workout(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     client_id = Column(UUID(as_uuid=True), ForeignKey(get_foreign_key_target("clients.id"), ondelete="CASCADE"), nullable=False)
     date = Column(DateTime, nullable=False)
-    workout_type = Column(String(255), nullable=False)
+    type = Column(String(255), nullable=False)  # Changed from workout_type to type to match API models
     duration = Column(Integer, nullable=False)  # Duration in minutes
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)

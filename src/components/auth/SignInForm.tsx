@@ -7,7 +7,7 @@ import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 
 export default function SignInForm() {
-  const { signIn, resetPassword } = useAuth();
+  const { signIn, resetPassword, register, signInWithPassword } = useAuth();
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [confirmPassword, setConfirmPassword] = useState<string>('');
@@ -39,21 +39,20 @@ export default function SignInForm() {
           });
         }
       } else if (mode === 'password') {
-        // For now, this is a placeholder for password authentication
-        // We would need to add a signInWithPassword method to your authContext
-        setMessage({
-          text: 'Password authentication is not yet implemented. Please use magic link instead.',
-          type: 'error',
-        });
-        
-        // When implemented, it would look something like this:
-        // const { error, success } = await signInWithPassword(email, password);
-        // if (error) {
-        //   setMessage({
-        //     text: `Authentication failed: ${error.message}`,
-        //     type: 'error',
-        //   });
-        // }
+        // Implement password authentication
+        const { error, success } = await signInWithPassword(email, password);
+        if (error) {
+          setMessage({
+            text: `Authentication failed: ${error.message}`,
+            type: 'error',
+          });
+        } else if (success) {
+          setMessage({
+            text: 'Sign in successful! Redirecting...',
+            type: 'success',
+          });
+          // The auth state change listener will handle redirect
+        }
       } else if (mode === 'register') {
         // Validate passwords match
         if (password !== confirmPassword) {
@@ -65,7 +64,7 @@ export default function SignInForm() {
           return;
         }
 
-        // Validate password strength (optional)
+        // Enhanced password validation
         if (password.length < 8) {
           setMessage({
             text: 'Password must be at least 8 characters long',
@@ -74,28 +73,53 @@ export default function SignInForm() {
           setIsLoading(false);
           return;
         }
-
-        // For now, this is a placeholder for registration
-        // We would need to add a register method to your authContext
-        setMessage({
-          text: 'Registration is not yet implemented. Please use magic link for now.',
-          type: 'error',
-        });
         
-        // When implemented, it would look something like this:
-        // const { error, success } = await register(email, password);
-        // if (error) {
-        //   setMessage({
-        //     text: `Registration failed: ${error.message}`,
-        //     type: 'error',
-        //   });
-        // } else if (success) {
-        //   setMessage({
-        //     text: 'Registration successful! You can now sign in.',
-        //     type: 'success',
-        //   });
-        //   setMode('password');
-        // }
+        // Check for password complexity
+        const hasUppercase = /[A-Z]/.test(password);
+        const hasLowercase = /[a-z]/.test(password);
+        const hasNumbers = /[0-9]/.test(password);
+        const hasSpecialChar = /[^A-Za-z0-9]/.test(password);
+        
+        if (!(hasUppercase && hasLowercase && hasNumbers)) {
+          setMessage({
+            text: 'Password must contain at least one uppercase letter, one lowercase letter, and one number',
+            type: 'error',
+          });
+          setIsLoading(false);
+          return;
+        }
+        
+        if (!hasSpecialChar) {
+          setMessage({
+            text: 'Password must contain at least one special character',
+            type: 'error',
+          });
+          setIsLoading(false);
+          return;
+        }
+
+        // Call register method from auth context
+        const { error, success, needsEmailConfirmation } = await register(email, password);
+        if (error) {
+          setMessage({
+            text: `Registration failed: ${error.message}`,
+            type: 'error',
+          });
+        } else if (success) {
+          if (needsEmailConfirmation) {
+            setMessage({
+              text: 'Registration successful! Please check your email to confirm your account.',
+              type: 'success',
+            });
+          } else {
+            setMessage({
+              text: 'Registration successful! You can now sign in.',
+              type: 'success',
+            });
+            // Switch to password mode for immediate login
+            setMode('password');
+          }
+        }
       } else if (mode === 'reset') {
         const { error, success } = await resetPassword(email);
         if (error) {
@@ -183,15 +207,33 @@ export default function SignInForm() {
             onChange={(e) => setEmail(e.target.value)}
           />
 
+          {/* Password input (only for password and register modes) */}
           {(mode === 'password' || mode === 'register') && (
-            <Input
-              label="Password"
-              type="password"
-              placeholder="Your password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <div className="space-y-2">
+              <Input
+                label="Password"
+                type="password"
+                placeholder="Your password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete={mode === 'register' ? 'new-password' : 'current-password'}
+              />
+              
+              {/* Password requirements helper text */}
+              {mode === 'register' && (
+                <div className="text-xs text-gray-500 mt-1">
+                  <p>Password must:</p>
+                  <ul className="list-disc list-inside pl-2">
+                    <li>Be at least 8 characters long</li>
+                    <li>Include at least one uppercase letter</li>
+                    <li>Include at least one lowercase letter</li>
+                    <li>Include at least one number</li>
+                    <li>Include at least one special character</li>
+                  </ul>
+                </div>
+              )}
+            </div>
           )}
 
           {mode === 'register' && (
