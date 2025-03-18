@@ -1,11 +1,12 @@
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import SQLAlchemyError, MissingGreenlet
 import logging
 import traceback
 import time
 from typing import Optional, Callable
+import asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,22 @@ class DatabaseErrorMiddleware(BaseHTTPMiddleware):
             # Process the request and get the response
             response = await call_next(request)
             return response
+            
+        except MissingGreenlet as e:
+            # Log the greenlet error specifically
+            logger.error(f"SQLAlchemy MissingGreenlet error: {str(e)}")
+            logger.error(traceback.format_exc())
+            
+            # Return a JSON response with error details
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "success": False,
+                    "message": "Database connection error occurred",
+                    "error": "Database connection error (async context issue)",
+                    "data": None
+                }
+            )
             
         except SQLAlchemyError as e:
             # Log the SQL error

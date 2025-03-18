@@ -6,9 +6,9 @@ import { supabase } from '@/lib/supabaseClient';
 
 export default function DebugAuthPage() {
   const { user, session, signOut } = useAuth();
-  const [authState, setAuthState] = useState<any>(null);
+  const [authState, setAuthState] = useState<Record<string, unknown> | null>(null);
   const [cookies, setCookies] = useState<string[]>([]);
-  const [sessionState, setSessionState] = useState<any>(null);
+  const [sessionState, setSessionState] = useState<Record<string, unknown> | null>(null);
   const [loading, setLoading] = useState(true);
 
   // Fetch debug information

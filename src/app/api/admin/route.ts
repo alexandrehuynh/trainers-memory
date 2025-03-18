@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     }
     
     return NextResponse.json({ data });
-  } catch (error: any) {
+  } catch (error: Error) {
     console.error('Admin API exception:', error);
     return NextResponse.json(
       { error: 'Server error', details: error.message },
@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
         role
       }
     });
-  } catch (error: any) {
+  } catch (error: Error) {
     console.error('Exception in admin user creation:', error);
     return NextResponse.json(
       { error: 'Server error', details: error.message },

@@ -8,7 +8,6 @@ import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
-import { getJwtToken } from '@/lib/tokenHelper';
 import { clientsApi } from '@/lib/apiClient';
 
 interface ClientFormData {

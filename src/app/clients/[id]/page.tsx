@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/authContext';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
-import { getJwtToken } from '@/lib/tokenHelper';
 import { workoutsApi, Workout } from '@/lib/apiClient';
 import { clientsApi } from '@/lib/apiClient';
 
@@ -33,19 +32,7 @@ export default function ClientDetailPage() {
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [workoutsLoading, setWorkoutsLoading] = useState(false);
 
-  useEffect(() => {
-    if (user) {
-      fetchClient();
-    }
-  }, [user, clientId]);
-
-  useEffect(() => {
-    if (user && client) {
-      fetchClientWorkouts();
-    }
-  }, [user, client, clientId]);
-
-  const fetchClient = async () => {
+  const fetchClient = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     
@@ -69,9 +56,9 @@ export default function ClientDetailPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [clientId]);
 
-  const fetchClientWorkouts = async () => {
+  const fetchClientWorkouts = useCallback(async () => {
     setWorkoutsLoading(true);
     try {
       const workouts = await workoutsApi.getByClientId(clientId);
@@ -108,7 +95,19 @@ export default function ClientDetailPage() {
     } finally {
       setWorkoutsLoading(false);
     }
-  };
+  }, [clientId, client]);
+
+  useEffect(() => {
+    if (user) {
+      fetchClient();
+    }
+  }, [user, clientId, fetchClient]);
+
+  useEffect(() => {
+    if (user && client) {
+      fetchClientWorkouts();
+    }
+  }, [user, client, clientId, fetchClientWorkouts]);
 
   const handleDelete = async () => {
     setIsDeleting(true);
@@ -291,7 +290,7 @@ export default function ClientDetailPage() {
                 Client not found
               </h3>
               <p className="text-gray-500 mb-6">
-                The client you're looking for doesn't exist or has been deleted
+                The client you&apos;re looking for doesn&apos;t exist or has been deleted
               </p>
               <Link href="/clients">
                 <Button variant="primary">Back to Clients</Button>

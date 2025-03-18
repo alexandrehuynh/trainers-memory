@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
     const { data, error } = await supabase.auth.getSession();
     
     // Retrieve local storage keys if possible
-    let storageInfo = {
+    const storageInfo = {
       note: "Storage cannot be directly accessed server-side"
     };
     
