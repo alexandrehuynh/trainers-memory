@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTheme } from '@/lib/themeContext';
 import Card from '@/components/ui/Card';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   BarChart, Bar, ReferenceLine
 } from 'recharts';
 import { Workout, Exercise, workoutsApi } from '@/lib/apiClient';
@@ -36,13 +36,7 @@ export default function ExerciseProgression({ clientId, exerciseName, limit = 10
   const labelColor = theme === 'light' ? '#6B7280' : '#9CA3AF';
   const gridColor = theme === 'light' ? '#E5E7EB' : '#374151';
 
-  useEffect(() => {
-    if (clientId && exerciseName) {
-      fetchWorkouts();
-    }
-  }, [clientId, exerciseName]);
-
-  const fetchWorkouts = async () => {
+  const fetchWorkouts = useCallback(async () => {
     if (!clientId) return;
     
     setIsLoading(true);
@@ -67,7 +61,13 @@ export default function ExerciseProgression({ clientId, exerciseName, limit = 10
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [clientId, exerciseName, limit]);
+
+  useEffect(() => {
+    if (clientId && exerciseName) {
+      fetchWorkouts();
+    }
+  }, [clientId, exerciseName, fetchWorkouts]);
 
   // Process workout data for progression chart
   const progressionData = useMemo(() => {

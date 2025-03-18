@@ -86,10 +86,12 @@ export default function EditClientPage() {
       
       // Navigate back to the client page
       router.push(`/clients/${clientId}`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error updating client:', err);
       // Display a more specific error message if available
-      const errorMessage = err.message || 'Failed to update client. Please try again.';
+      const errorMessage = typeof err === 'object' && err !== null && 'message' in err 
+        ? (err as { message: string }).message 
+        : 'Failed to update client. Please try again.';
       setError(errorMessage);
     } finally {
       setIsSaving(false);

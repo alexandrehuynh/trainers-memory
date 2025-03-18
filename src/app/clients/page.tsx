@@ -6,7 +6,6 @@ import { useTheme } from '@/lib/themeContext';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
-import { getJwtToken } from '@/lib/tokenHelper';
 import ImportClientsModal from '@/components/ImportClientsModal';
 import { Client, clientsApi } from '@/lib/apiClient';
 

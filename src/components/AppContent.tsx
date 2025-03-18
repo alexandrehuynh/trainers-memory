@@ -34,7 +34,7 @@ export default function AppContent({ children }: { children: React.ReactNode }) 
         {children}
       </main>
       <footer className="py-4 text-center text-sm text-gray-500">
-        © {new Date().getFullYear()} Trainer's Memory
+        © {new Date().getFullYear()} Trainer&apos;s Memory
       </footer>
     </div>
   );

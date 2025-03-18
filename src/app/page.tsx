@@ -7,20 +7,12 @@ import Link from 'next/link';
 import { useTheme } from '@/lib/themeContext';
 
 export default function Home() {
-  const { user, isLoading } = useAuth();
+  const { user } = useAuth();
   const { theme } = useTheme();
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
 
   return (
     <div className="max-w-4xl mx-auto">
-      <h1 className={`text-3xl font-bold ${theme === 'light' ? 'text-gray-900' : 'text-gray-100'} mb-6`}>Welcome to Trainer's Memory</h1>
+      <h1 className={`text-3xl font-bold ${theme === 'light' ? 'text-gray-900' : 'text-gray-100'} mb-6`}>Welcome to Trainer&apos;s Memory</h1>
       
       {user ? (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -53,7 +45,7 @@ export default function Home() {
               Your Personal Fitness Trainer Assistant
             </h2>
             <p className={`${theme === 'light' ? 'text-gray-600' : 'text-gray-300'} mb-6`}>
-              Trainer's Memory helps fitness professionals manage clients, track workouts, and monitor progress all in one place.
+              Trainer&apos;s Memory helps fitness professionals manage clients, track workouts, and monitor progress all in one place.
             </p>
             <Link href="/signin">
               <Button variant="primary" size="lg">

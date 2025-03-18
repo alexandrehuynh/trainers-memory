@@ -134,9 +134,9 @@ export default function SignInForm() {
           });
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setMessage({
-        text: `An unexpected error occurred: ${err.message}`,
+        text: `An unexpected error occurred: ${err instanceof Error ? err.message : 'Unknown error'}`,
         type: 'error',
       });
     } finally {
@@ -301,8 +301,8 @@ export default function SignInForm() {
         <div className="mt-6 p-4 bg-blue-50 rounded-md">
           <h3 className="text-sm font-medium text-blue-800">What is a Magic Link?</h3>
           <p className="text-sm text-blue-700 mt-1">
-            A magic link is a secure, passwordless way to sign in. We'll send a special link to your email that will 
-            automatically log you in when clicked - no password needed. It's both more secure and more convenient!
+            A magic link is a secure, passwordless way to sign in. We&apos;ll send a special link to your email that will 
+            automatically log you in when clicked - no password needed. It&apos;s both more secure and more convenient!
           </p>
         </div>
       )}

@@ -22,7 +22,7 @@ export default function Navbar() {
           <div className="flex">
             <div className="flex-shrink-0 flex items-center">
               <Link href="/" className={`text-xl font-bold ${theme === 'light' ? 'text-blue-600' : 'text-blue-400'}`}>
-                Trainer's Memory
+                Trainer&apos;s Memory
               </Link>
             </div>
             {user && (

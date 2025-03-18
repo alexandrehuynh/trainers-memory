@@ -1,13 +1,12 @@
 'use client';
 
-import { useState, useEffect, Suspense } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/authContext';
 import Card from '@/components/ui/Card';
 import Input from '@/components/ui/Input';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
-import { getJwtToken } from '@/lib/tokenHelper';
 import { Client, clientsApi, Exercise } from '@/lib/apiClient';
 import { workoutsApi } from '@/lib/apiClient';
 import WorkoutTemplates from '@/components/WorkoutTemplates';
@@ -23,7 +22,7 @@ interface WorkoutFormData {
   customTypeName?: string;
 }
 
-// Define WorkoutTemplate interface to match what's used in WorkoutTemplates
+// Define WorkoutTemplate interface to match what&apos;s used in WorkoutTemplates
 interface WorkoutTemplate {
   id: string;
   name: string;
@@ -32,12 +31,12 @@ interface WorkoutTemplate {
   createdAt: Date;
 }
 
-// Create a client component that uses useSearchParams
-function WorkoutPageContent() {
+// Export the content component directly instead of wrapping in Suspense
+export default function WorkoutPageContent() {
   const { user, isLoading: authLoading } = useAuth();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const clientIdParam = searchParams?.get('clientId') || null;
+  const templateParam = searchParams?.get('template') || null;
   
   const [clients, setClients] = useState<Client[]>([]);
   const [formData, setFormData] = useState<WorkoutFormData>({
@@ -182,12 +181,14 @@ function WorkoutPageContent() {
       } else {
         router.push(`/workouts?t=${Date.now()}`);
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error creating workout:', err);
       // Display a more specific error message if available
-      const errorMessage = err.message || 'Failed to create workout. Please try again.';
+      const errorMessage = typeof err === 'object' && err !== null && 'message' in err 
+        ? (err as { message: string }).message 
+        : 'Failed to create workout. Please try again.';
       setError(errorMessage);
-      // Allow the user to try again by resetting the saving state
+    } finally {
       setIsSaving(false);
     }
   };
@@ -548,18 +549,5 @@ function WorkoutPageContent() {
         </Card>
       )}
     </div>
-  );
-}
-
-// Main page component that wraps the content in a Suspense boundary
-export default function NewWorkoutPage() {
-  return (
-    <Suspense fallback={
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    }>
-      <WorkoutPageContent />
-    </Suspense>
   );
 } 
