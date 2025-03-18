@@ -6,6 +6,57 @@
 import { Client, clientsApi } from './apiClient';
 
 /**
+ * Validates client data for create/update operations
+ * 
+ * @param clientData - Client data to validate
+ * @returns Validation result with success flag and any errors
+ */
+export function validateClientData(clientData: any): { success: boolean; errors?: string[] } {
+  const errors: string[] = [];
+  
+  // Check required fields
+  if (!clientData.name || typeof clientData.name !== 'string' || clientData.name.trim() === '') {
+    errors.push('Name is required');
+  } else if (clientData.name.length > 100) {
+    errors.push('Name must be 100 characters or less');
+  }
+  
+  if (!clientData.email || typeof clientData.email !== 'string' || clientData.email.trim() === '') {
+    errors.push('Email is required');
+  } else {
+    // Simple email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(clientData.email)) {
+      errors.push('Email is invalid');
+    } else if (clientData.email.length > 255) {
+      errors.push('Email must be 255 characters or less');
+    }
+  }
+  
+  // Optional fields validation
+  if (clientData.phone !== undefined && clientData.phone !== null) {
+    if (typeof clientData.phone !== 'string') {
+      errors.push('Phone must be a string');
+    } else if (clientData.phone.length > 20) {
+      errors.push('Phone must be 20 characters or less');
+    }
+  }
+  
+  if (clientData.notes !== undefined && clientData.notes !== null) {
+    if (typeof clientData.notes !== 'string') {
+      errors.push('Notes must be a string');
+    } else if (clientData.notes.length > 1000) {
+      errors.push('Notes must be 1000 characters or less');
+    }
+  }
+  
+  return {
+    success: errors.length === 0,
+    errors: errors.length > 0 ? errors : undefined
+  };
+}
+
+/**
  * Create a new client with proper error handling
  * 
  * @param clientData - Client data to be created
