@@ -86,16 +86,16 @@ additional_origins = os.getenv("CORS_ADDITIONAL_ORIGINS", "").split(",")
 if additional_origins and additional_origins[0]:
     origins.extend([origin.strip() for origin in additional_origins])
 
-# Configure CORS middleware
+# Add CORS middleware first
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"] if allow_all_origins else origins,  # Use explicit origins in production
-    allow_origin_regex=os.getenv("CORS_ORIGIN_REGEX", r"https://trainers-memory.*\.vercel\.app"),  # Regex for Vercel preview deployments
+    allow_origins=["*"] if allow_all_origins else origins,
+    allow_origin_regex=os.getenv("CORS_ORIGIN_REGEX", r"https://trainers-memory.*\.vercel\.app"),
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],  # Be explicit about allowed methods
-    allow_headers=["Content-Type", "Authorization", API_KEY_NAME, "X-Requested-With", "Accept", "Origin"],  # Be explicit about allowed headers
-    expose_headers=[API_KEY_NAME, "Content-Length", "Access-Control-Allow-Origin"],  # Expose necessary headers
-    max_age=86400,  # 24 hours
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
+    allow_headers=["Content-Type", "Authorization", API_KEY_NAME, "X-Requested-With", "Accept", "Origin"],
+    expose_headers=[API_KEY_NAME, "Content-Length", "Access-Control-Allow-Origin"],
+    max_age=86400,
 )
 
 # Add custom error handling middleware

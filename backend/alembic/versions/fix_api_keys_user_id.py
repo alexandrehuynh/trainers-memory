@@ -1,6 +1,6 @@
 """Fix api_keys user_id column
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: fix_api_keys_user_id
 Revises: f2b1c25117bf
 Create Date: 2025-03-16 10:00:00.000000
 
@@ -11,7 +11,7 @@ from sqlalchemy.dialects.postgresql import UUID
 import uuid
 
 # revision identifiers, used by Alembic.
-revision = 'a1b2c3d4e5f6'
+revision = 'fix_api_keys_user_id'
 down_revision = 'f2b1c25117bf'
 branch_labels = None
 depends_on = None
