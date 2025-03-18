@@ -5,8 +5,8 @@ import AppContent from '@/components/AppContent';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Trainer\'s Memory',
-  description: 'A fitness trainer\'s assistant application',
+  title: 'Trainer&apos;s Memory',
+  description: 'A fitness trainer&apos;s assistant application',
 };
 
 export default function RootLayout({

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/authContext';
 import Card from '@/components/ui/Card';
@@ -37,13 +37,7 @@ export default function EditWorkoutPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (user) {
-      Promise.all([fetchWorkout(), fetchClients()]);
-    }
-  }, [user, workoutId]);
-
-  const fetchWorkout = async () => {
+  const fetchWorkout = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     
@@ -98,9 +92,9 @@ export default function EditWorkoutPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [workoutId]);
 
-  const fetchClients = async () => {
+  const fetchClients = useCallback(async () => {
     try {
       const data = await clientsApi.getAll();
       setClients(data);
@@ -113,7 +107,13 @@ export default function EditWorkoutPage() {
         { id: '2', name: 'Jane Smith', email: 'jane@example.com', created_at: new Date().toISOString() },
       ]);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      Promise.all([fetchWorkout(), fetchClients()]);
+    }
+  }, [user, fetchWorkout, fetchClients]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -170,10 +170,12 @@ export default function EditWorkoutPage() {
         // Force skip cache on the next navigation by adding a timestamp parameter
         router.push(`/workouts/${workoutId}?t=${Date.now()}`);
       }, 500); // 500ms delay
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error updating workout:', err);
       // Display a more specific error message if available
-      const errorMessage = err.message || 'Failed to update workout. Please try again.';
+      const errorMessage = typeof err === 'object' && err !== null && 'message' in err 
+        ? (err as { message: string }).message 
+        : 'Failed to update workout. Please try again.';
       setError(errorMessage);
       
       // Keep the form visible with the error message instead of redirecting

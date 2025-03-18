@@ -1,15 +1,24 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/authContext';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
-import { Workout, workoutsApi } from '@/lib/apiClient';
+import { Workout, workoutsApi, Exercise } from '@/lib/apiClient';
 import WorkoutHistory from '@/components/WorkoutHistory';
 import ExerciseProgression from '@/components/ExerciseProgression';
 import WorkoutTemplates from '@/components/WorkoutTemplates';
+
+// Add WorkoutTemplate interface
+interface WorkoutTemplate {
+  id: string;
+  name: string;
+  type: string;
+  exercises: Exercise[];
+  createdAt: Date;
+}
 
 export default function WorkoutDetailPage() {
   const { user, isLoading: authLoading } = useAuth();
@@ -26,13 +35,7 @@ export default function WorkoutDetailPage() {
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null);
   const [showTemplates, setShowTemplates] = useState(false);
 
-  useEffect(() => {
-    if (user) {
-      fetchWorkout();
-    }
-  }, [user, workoutId]);
-
-  const fetchWorkout = async () => {
+  const fetchWorkout = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     
@@ -75,7 +78,13 @@ export default function WorkoutDetailPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [workoutId]);
+
+  useEffect(() => {
+    if (user) {
+      fetchWorkout();
+    }
+  }, [user, fetchWorkout]);
 
   const handleDelete = async () => {
     setIsDeleting(true);
@@ -99,7 +108,7 @@ export default function WorkoutDetailPage() {
     }
   };
 
-  const handleTemplateSelect = (template: any) => {
+  const handleTemplateSelect = (template: WorkoutTemplate) => {
     // Navigate to new workout page with template
     router.push(`/workouts/new?template=${template.id}`);
   };
@@ -374,7 +383,7 @@ export default function WorkoutDetailPage() {
               <div className="mt-6 bg-blue-50 border border-blue-200 rounded-md p-4">
                 <h3 className="text-md font-medium text-blue-800 mb-2">Progress Insights</h3>
                 <p className="text-sm text-blue-700">
-                  Track your client's progress over time by comparing exercise weights, reps, and sets across multiple workouts.
+                  Track your client&apos;s progress over time by comparing exercise weights, reps, and sets across multiple workouts.
                   Select a specific exercise from the dropdown above to see detailed progression charts.
                 </p>
               </div>

@@ -127,13 +127,13 @@ export default function NewClientPage() {
             <form onSubmit={handleSubmit}>
               <div className="space-y-4">
                 <Input
-                  label="Name"
+                  label="Full Name"
                   id="name"
                   name="name"
                   value={formData.name}
                   onChange={handleChange}
                   required
-                  placeholder="Client's full name"
+                  placeholder="Client&apos;s full name"
                 />
 
                 <Input

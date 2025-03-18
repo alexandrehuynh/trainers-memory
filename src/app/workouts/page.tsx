@@ -1,12 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/lib/authContext';
 import { useTheme } from '@/lib/themeContext';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Link from 'next/link';
-import { getJwtToken } from '@/lib/tokenHelper';
 import ImportWorkoutsModal from '@/components/ImportWorkoutsModal';
 import ExportWorkoutsModal from '@/components/ExportWorkoutsModal';
 import ScanWorkoutModal from '@/components/ScanWorkoutModal';
@@ -25,14 +24,7 @@ export default function WorkoutsPage() {
   // Development mode flag - set to true to use sample data and avoid API calls
   const USE_SAMPLE_DATA = false; // Toggle this when backend is ready
 
-  useEffect(() => {
-    // Only fetch workouts if user is authenticated
-    if (user) {
-      fetchWorkouts();
-    }
-  }, [user]);
-
-  const fetchWorkouts = async () => {
+  const fetchWorkouts = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     
@@ -128,7 +120,14 @@ export default function WorkoutsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    // Only fetch workouts if user is authenticated
+    if (user) {
+      fetchWorkouts();
+    }
+  }, [user, fetchWorkouts]);
 
   const handleImportSuccess = (count: number) => {
     setShowImportModal(false);

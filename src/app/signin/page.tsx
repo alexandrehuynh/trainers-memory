@@ -1,9 +1,8 @@
 import SignInForm from '@/components/auth/SignInForm';
-import Navigation from '@/components/Navigation';
 
 export const metadata = {
-  title: 'Sign In - Trainer\'s Memory',
-  description: 'Sign in to your Trainer\'s Memory account',
+  title: 'Sign In - Trainer&apos;s Memory',
+  description: 'Sign in to your Trainer&apos;s Memory account',
 };
 
 export default function SignInPage() {
