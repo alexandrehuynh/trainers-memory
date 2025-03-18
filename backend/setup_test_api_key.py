@@ -29,7 +29,7 @@ DB_URI = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhos
 ASYNC_DB_URI = DB_URI.replace("postgresql://", "postgresql+asyncpg://")
 
 # Define constants for the test data
-TEST_API_KEY = "test_key_12345"
+TEST_API_KEY = "tmk_40af9844458144dc9ba5f5859c8b0f02"  # New API key value
 TEST_USER_ID = "00000000-0000-0000-0000-000000000001"
 TEST_CLIENT_ID = "00000000-0000-0000-0000-000000000001"
 TEST_API_KEY_ID = "00000000-0000-0000-0000-000000000099"
@@ -61,17 +61,16 @@ async def setup_test_api_key():
         
         if not test_user:
             logger.info("Creating test user...")
-            # Create a test user
+            # Create a test user with the correct columns
             create_user = text("""
-                INSERT INTO users (id, email, first_name, last_name, role, created_at, updated_at)
-                VALUES (:id, :email, :first_name, :last_name, :role, NOW(), NOW())
+                INSERT INTO users (id, email, role, is_active, created_at, updated_at)
+                VALUES (:id, :email, :role, :is_active, NOW(), NOW())
                 ON CONFLICT (id) DO NOTHING
             """).bindparams(
                 id=TEST_USER_ID,
                 email="test@trainersmemory.api",
-                first_name="Test",
-                last_name="User",
-                role="admin"
+                role="admin",
+                is_active=True
             )
             await session.execute(create_user)
             await session.commit()
@@ -93,8 +92,8 @@ async def setup_test_api_key():
             logger.info("Creating test client...")
             # Create a test client
             create_client = text("""
-                INSERT INTO clients (id, name, email, phone, notes, user_id, created_at, updated_at)
-                VALUES (:id, :name, :email, :phone, :notes, :user_id, NOW(), NOW())
+                INSERT INTO clients (id, name, email, phone, notes, user_id, trainer_id, created_at, updated_at)
+                VALUES (:id, :name, :email, :phone, :notes, :user_id, :trainer_id, NOW(), NOW())
                 ON CONFLICT (id) DO NOTHING
             """).bindparams(
                 id=TEST_CLIENT_ID,
@@ -102,7 +101,8 @@ async def setup_test_api_key():
                 email="testclient@example.com",
                 phone="555-123-4567",
                 notes="Test client for development",
-                user_id=TEST_USER_ID
+                user_id=TEST_USER_ID,
+                trainer_id=TEST_USER_ID
             )
             await session.execute(create_client)
             await session.commit()
@@ -122,10 +122,10 @@ async def setup_test_api_key():
         
         if not existing_key:
             logger.info("Creating test API key...")
-            # Create the test API key
+            # Create the test API key with the correct columns including user_id
             create_api_key = text("""
-                INSERT INTO api_keys (id, key, client_id, user_id, name, description, active, created_at)
-                VALUES (:id, :key, :client_id, :user_id, :name, :description, :active, NOW())
+                INSERT INTO api_keys (id, key, client_id, user_id, name, description, active, created_at, last_used_at, expires_at)
+                VALUES (:id, :key, :client_id, :user_id, :name, :description, :active, NOW(), NULL, NULL)
                 ON CONFLICT (key) DO UPDATE SET
                     client_id = :client_id,
                     user_id = :user_id,
@@ -143,11 +143,22 @@ async def setup_test_api_key():
             )
             await session.execute(create_api_key)
             await session.commit()
-            logger.info("Test API key created/updated successfully.")
+            logger.info(f"Test API key created/updated successfully: {TEST_API_KEY}")
         else:
-            logger.info("Test API key already exists.")
+            # Update existing key to ensure user_id is properly set
+            update_api_key = text("""
+                UPDATE api_keys
+                SET user_id = :user_id
+                WHERE key = :key AND (user_id IS NULL OR user_id != :user_id)
+            """).bindparams(
+                key=TEST_API_KEY,
+                user_id=TEST_USER_ID
+            )
+            await session.execute(update_api_key)
+            await session.commit()
+            logger.info(f"Test API key already exists: {TEST_API_KEY}")
     
-    logger.info("Test API key setup completed.")
+    logger.info(f"Test API key setup completed. Your API key is: {TEST_API_KEY}")
 
 if __name__ == "__main__":
     asyncio.run(setup_test_api_key()) 

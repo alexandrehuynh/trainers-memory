@@ -21,7 +21,7 @@ When you click the Authorize button, a dialog will appear:
 
 1. In the "Value" field, enter your API key **exactly as is** - do not include any extra characters:
    ```
-   tmk_3db7baed7f1c40bb9e39b9c512fdcf8d
+   tmk_40af9844458144dc9ba5f5859c8b0f02
    ```
 
 2. **Do not** prefix it with "Bearer" or add quotes. Just paste the raw API key.
@@ -64,7 +64,7 @@ After successful authorization:
 If Swagger UI is still not working, you can test your endpoints with cURL:
 
 ```bash
-curl -H "X-API-Key: tmk_3db7baed7f1c40bb9e39b9c512fdcf8d" http://localhost:8000/api/v1/me
+curl -H "X-API-Key: tmk_40af9844458144dc9ba5f5859c8b0f02"" http://localhost:8000/api/v1/me
 ```
 
 ## Using the Test Scripts
@@ -73,15 +73,15 @@ We've created several scripts to help test API authentication:
 
 1. **Check API key validity**:
    ```bash
-   python scripts/check_api_key.py tmk_3db7baed7f1c40bb9e39b9c512fdcf8d
+   python scripts/check_api_key.py tmk_40af9844458144dc9ba5f5859c8b0f02
    ```
 
 2. **Test GET requests**:
    ```bash
-   python scripts/test_api_request.py /api/v1/me tmk_3db7baed7f1c40bb9e39b9c512fdcf8d
+   python scripts/test_api_request.py /api/v1/me tmk_40af9844458144dc9ba5f5859c8b0f02
    ```
 
 3. **Test POST requests**:
    ```bash
-   python scripts/test_post_request.py tmk_3db7baed7f1c40bb9e39b9c512fdcf8d
+   python scripts/test_post_request.py tmk_40af9844458144dc9ba5f5859c8b0f02
    ``` 

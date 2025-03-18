@@ -53,7 +53,7 @@ async def main():
     args = parser.parse_args()
     
     # If no API key is provided, use the one generated earlier
-    api_key = args.api_key or "tmk_3db7baed7f1c40bb9e39b9c512fdcf8d"
+    api_key = args.api_key or "tmk_40af9844458144dc9ba5f5859c8b0f02"
     
     try:
         is_valid = await validate_api_key(api_key)

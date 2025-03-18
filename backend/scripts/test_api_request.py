@@ -65,7 +65,7 @@ def test_api_request(endpoint: str, api_key: str):
 def main():
     parser = argparse.ArgumentParser(description='Test an API request with an API key.')
     parser.add_argument('endpoint', nargs='?', default='/api/v1/me', help='The API endpoint to request')
-    parser.add_argument('api_key', nargs='?', default='tmk_3db7baed7f1c40bb9e39b9c512fdcf8d', help='The API key to use')
+    parser.add_argument('api_key', nargs='?', default='tmk_40af9844458144dc9ba5f5859c8b0f02', help='The API key to use')
     args = parser.parse_args()
     
     # Make the request

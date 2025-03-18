@@ -219,7 +219,7 @@ All endpoints require an API key to be provided in the `X-API-Key` header.
 
 #### Testing with Swagger UI
 1. Click the "Authorize" button at the top
-2. Enter your API key **exactly as-is** (e.g., `tmk_40af9844458144dc9ba5f5859c8b0f01`)
+2. Enter your API key **exactly as-is** (e.g., `tmk_40af9844458144dc9ba5f5859c8b0f02`)
 3. Click "Authorize" and then "Close"
 4. Now you can test the endpoints
 
