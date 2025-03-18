@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/authContext';
-import { ensureSessionInCookies, debugAuthState } from '@/lib/authCookieHelper';
 import { supabase } from '@/lib/supabaseClient';
 
 export default function DebugAuthPage() {
@@ -17,9 +16,18 @@ export default function DebugAuthPage() {
     const fetchDebugInfo = async () => {
       try {
         setLoading(true);
-        // Get auth state from helper
-        const state = debugAuthState();
-        setAuthState(state);
+        
+        // Simplified debug state logic
+        const authItems: Record<string, string | null> = {};
+        if (typeof window !== 'undefined') {
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.includes('supabase')) {
+              authItems[key] = localStorage.getItem(key);
+            }
+          }
+        }
+        setAuthState({ localStorage: authItems });
         
         // Get cookies for display
         if (typeof document !== 'undefined') {
@@ -50,9 +58,9 @@ export default function DebugAuthPage() {
   const fixAuthState = async () => {
     try {
       setLoading(true);
-      // Ensure cookies are set
-      const result = await ensureSessionInCookies();
-      alert(result ? 'Session synced to cookies successfully' : 'Unable to sync session to cookies');
+      // Simplified session refresh logic
+      const { error } = await supabase.auth.refreshSession();
+      alert(error ? `Error: ${error.message}` : 'Session refreshed successfully');
       
       // Refresh the page to show updated state
       window.location.reload();

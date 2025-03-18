@@ -20,6 +20,14 @@ const nextConfig = {
       ...(config.resolve.modules || []),
     ];
     
+    // Add polyfills for node.js core modules
+    config.resolve.fallback = {
+      ...config.resolve.fallback,
+      buffer: require.resolve('buffer/'),
+      util: require.resolve('util/'),
+      stream: require.resolve('stream-browserify'),
+    };
+    
     return config;
   },
 };
