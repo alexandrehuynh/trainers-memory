@@ -22,7 +22,7 @@ console.log('Environment:', isProduction ? 'PRODUCTION' : 'DEVELOPMENT');
 
 type RequestOptions = {
   method?: string;
-  body?: any;
+  body?: unknown;
   headers?: Record<string, string>;
   cache?: boolean;
   retries?: number;
@@ -30,8 +30,8 @@ type RequestOptions = {
   skipCache?: boolean;
 };
 
-// Standard API response format
-interface ApiResponse<T> {
+// Standard API response format (prefix with underscore to indicate it's used internally)
+interface _ApiResponse<T> {
   status: 'success' | 'error';
   message: string;
   data: T;
@@ -40,7 +40,7 @@ interface ApiResponse<T> {
 }
 
 // Cache storage for API responses
-const apiCache: Record<string, { timestamp: number; data: any }> = {};
+const apiCache: Record<string, { timestamp: number; data: unknown }> = {};
 const CACHE_EXPIRY = 5 * 60 * 1000; // 5 minutes in milliseconds
 
 // Backend connection state
@@ -211,7 +211,7 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
     const cachedData = apiCache[cacheKey];
     if (cachedData && isCacheValid(cachedData.timestamp)) {
       console.log(`Cache hit for ${endpoint}`);
-      return cachedData.data;
+      return cachedData.data as T;
     }
   }
   
@@ -293,7 +293,7 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
       console.log(`API data received for ${endpoint}:`, { dataSize: JSON.stringify(data).length });
       
       // Process response data based on endpoint to maintain compatibility
-      const processedData = processResponseData(endpoint, data);
+      const processedData = processResponseData<T>(endpoint, data);
       
       // Cache GET responses if caching is enabled
       if (cacheEnabled && method === 'GET') {
@@ -396,37 +396,27 @@ export async function request<T>(endpoint: string, options: RequestOptions = {})
 }
 
 // Helper function to process response data based on endpoint
-function processResponseData(endpoint: string, data: any): any {
+function processResponseData<T>(endpoint: string, data: unknown): T {
   // Handle formatted API responses with { status, data } structure
-  if (data && typeof data === 'object' && data.status === 'success' && data.data !== undefined) {
+  if (data && typeof data === 'object' && 'status' in data && 
+      (data as { status: string }).status === 'success' && 
+      'data' in data && (data as { data: unknown }).data !== undefined) {
+    
+    const responseData = (data as { data: unknown }).data;
+    
     // Special case handling for endpoints that return nested data structures
-    if (endpoint.includes('/workouts') && data.data.workouts && Array.isArray(data.data.workouts)) {
-      return data.data.workouts;
+    if (endpoint.includes('/workouts') && 
+        typeof responseData === 'object' && responseData !== null && 
+        'workouts' in responseData && 
+        Array.isArray((responseData as { workouts: unknown[] }).workouts)) {
+      return (responseData as { workouts: T }).workouts;
     }
     
-    // Handle clients endpoint that returns { clients: [...] }
-    if (endpoint.includes('/clients') && !endpoint.includes('/clients/') && data.data.clients && Array.isArray(data.data.clients)) {
-      return data.data.clients;
-    }
-    
-    // For other endpoints, just return the data property
-    return data.data;
+    return responseData as T;
   }
   
-  // For responses that don't follow the standard format
-  // Check for nested data structures directly
-  if (data && typeof data === 'object') {
-    if (endpoint.includes('/workouts') && data.workouts && Array.isArray(data.workouts)) {
-      return data.workouts;
-    }
-    
-    if (endpoint.includes('/clients') && !endpoint.includes('/clients/') && data.clients && Array.isArray(data.clients)) {
-      return data.clients;
-    }
-  }
-  
-  // Default case - return the data as is
-  return data;
+  // If not a structured API response, return the data as is
+  return data as T;
 }
 
 // Helper function to refresh the auth token

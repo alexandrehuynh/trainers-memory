@@ -47,7 +47,7 @@ export default function WorkoutPageContent() {
     notes: '',
     exercises: [
       {
-        id: crypto.randomUUID(),
+        id: '1', // Use a simple string initial ID to avoid crypto API during server rendering
         name: '',
         sets: 3,
         reps: 10,
@@ -60,6 +60,17 @@ export default function WorkoutPageContent() {
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showTemplates, setShowTemplates] = useState(false);
+
+  // Initialize with proper UUIDs after component mounts (client-side only)
+  useEffect(() => {
+    setFormData(prev => ({
+      ...prev,
+      exercises: prev.exercises.map(exercise => ({
+        ...exercise,
+        id: exercise.id === '1' ? crypto.randomUUID() : exercise.id,
+      })),
+    }));
+  }, []);
 
   useEffect(() => {
     if (user) {
@@ -106,6 +117,7 @@ export default function WorkoutPageContent() {
   };
 
   const addExercise = () => {
+    // Use crypto API only on client side (after initial render)
     setFormData((prev) => ({
       ...prev,
       exercises: [

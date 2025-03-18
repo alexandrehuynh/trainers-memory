@@ -28,6 +28,31 @@ interface ImportWorkoutsModalProps {
   onSuccess: (importedCount: number) => void;
 }
 
+// Interface for the spreadsheet row data
+interface SpreadsheetRowData {
+  [key: string]: string | number | undefined;
+  client_email?: string;
+  date?: string | number;
+  type?: string;
+  duration?: string | number;
+  notes?: string;
+  [exerciseKey: `exercise${number}_${string}`]: string | number | undefined;
+}
+
+// Interface for Excel row data
+interface ExcelRow {
+  [key: string]: string | number | undefined;
+}
+
+// Interface for exercise data
+interface ExerciseData {
+  name: string;
+  sets: number;
+  reps: number;
+  weight: number;
+  notes: string;
+}
+
 export default function ImportWorkoutsModal({ isOpen, onClose, onSuccess }: ImportWorkoutsModalProps) {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<ImportWorkout[]>([]);
@@ -80,7 +105,7 @@ export default function ImportWorkoutsModal({ isOpen, onClose, onSuccess }: Impo
     setError(null);
   };
 
-  const parseExercises = (rowData: any): Array<{ id: string; name: string; sets: number; reps: number; weight: number; notes: string; }> => {
+  const parseExercises = (rowData: SpreadsheetRowData): Array<{ id: string; name: string; sets: number; reps: number; weight: number; notes: string; }> => {
     const exercises = [];
     let exerciseIndex = 1;
     
@@ -88,14 +113,18 @@ export default function ImportWorkoutsModal({ isOpen, onClose, onSuccess }: Impo
     while (rowData[`exercise${exerciseIndex}_name`]) {
       const exerciseName = rowData[`exercise${exerciseIndex}_name`];
       
-      if (exerciseName && exerciseName.trim() !== '') {
+      if (exerciseName && typeof exerciseName === 'string' && exerciseName.trim() !== '') {
+        const exerciseData: ExerciseData = {
+          name: exerciseName,
+          sets: parseInt(String(rowData[`exercise${exerciseIndex}_sets`] || '0')),
+          reps: parseInt(String(rowData[`exercise${exerciseIndex}_reps`] || '0')),
+          weight: parseInt(String(rowData[`exercise${exerciseIndex}_weight`] || '0')),
+          notes: String(rowData[`exercise${exerciseIndex}_notes`] || ''),
+        };
+        
         exercises.push({
           id: crypto.randomUUID(),
-          name: exerciseName,
-          sets: parseInt(rowData[`exercise${exerciseIndex}_sets`]) || 0,
-          reps: parseInt(rowData[`exercise${exerciseIndex}_reps`]) || 0,
-          weight: parseInt(rowData[`exercise${exerciseIndex}_weight`]) || 0,
-          notes: rowData[`exercise${exerciseIndex}_notes`] || '',
+          ...exerciseData
         });
       }
       
@@ -135,7 +164,7 @@ export default function ImportWorkoutsModal({ isOpen, onClose, onSuccess }: Impo
           if (!rows[i].trim()) continue;
           
           const values = rows[i].split(',').map(v => v.trim());
-          const rowData: any = {};
+          const rowData: SpreadsheetRowData = {};
           
           headers.forEach((header, index) => {
             if (values[index]) {
@@ -152,9 +181,9 @@ export default function ImportWorkoutsModal({ isOpen, onClose, onSuccess }: Impo
                 client_id: client.id,
                 client_name: client.name,
                 date: new Date(rowData.date).toISOString().split('T')[0],
-                type: rowData.type,
-                duration: parseInt(rowData.duration) || 0,
-                notes: rowData.notes || '',
+                type: String(rowData.type),
+                duration: typeof rowData.duration === 'number' ? rowData.duration : parseInt(String(rowData.duration)) || 0,
+                notes: String(rowData.notes || ''),
                 exercises: parseExercises(rowData),
               });
             }
@@ -199,11 +228,11 @@ export default function ImportWorkoutsModal({ isOpen, onClose, onSuccess }: Impo
             
             // Process each row (starting from row 1, as row 0 is headers)
             for (let i = 1; i < json.length; i++) {
-              const row = json[i] as any[];
+              const row = json[i] as (string | number | undefined)[];
               
               if (!row || row.length === 0) continue;
               
-              const rowData: any = {};
+              const rowData: SpreadsheetRowData = {};
               
               // Map each column to its header
               headers.forEach((header, index) => {
@@ -237,7 +266,7 @@ export default function ImportWorkoutsModal({ isOpen, onClose, onSuccess }: Impo
                       workoutDate = new Date(rowData.date).toISOString().split('T')[0];
                     }
                   } catch (err) {
-                    console.error('Error parsing date:', err);
+                    console.error("Error parsing date:", err);
                     workoutDate = new Date().toISOString().split('T')[0]; // Default to today
                   }
                   
@@ -245,9 +274,9 @@ export default function ImportWorkoutsModal({ isOpen, onClose, onSuccess }: Impo
                     client_id: client.id,
                     client_name: client.name,
                     date: workoutDate,
-                    type: rowData.type,
-                    duration: parseInt(rowData.duration) || 0,
-                    notes: rowData.notes || '',
+                    type: String(rowData.type),
+                    duration: typeof rowData.duration === 'number' ? rowData.duration : parseInt(String(rowData.duration)) || 0,
+                    notes: String(rowData.notes || ''),
                     exercises: parseExercises(rowData),
                   });
                 }
@@ -324,14 +353,14 @@ export default function ImportWorkoutsModal({ isOpen, onClose, onSuccess }: Impo
     // Sample data with headers and one example row
     const data = [
       [
-        'client_email', 'date', 'type', 'duration', 'notes',
-        'exercise1_name', 'exercise1_sets', 'exercise1_reps', 'exercise1_weight', 'exercise1_notes',
-        'exercise2_name', 'exercise2_sets', 'exercise2_reps', 'exercise2_weight', 'exercise2_notes'
+        "client_email", "date", "type", "duration", "notes",
+        "exercise1_name", "exercise1_sets", "exercise1_reps", "exercise1_weight", "exercise1_notes",
+        "exercise2_name", "exercise2_sets", "exercise2_reps", "exercise2_weight", "exercise2_notes"
       ],
       [
-        'client@example.com', new Date().toISOString().split('T')[0], 'Strength Training', 60, 'Sample workout notes',
-        'Bench Press', 3, 10, 135, 'Good form',
-        'Squats', 4, 8, 185, ''
+        "client@example.com", new Date().toISOString().split("T")[0], "Strength Training", 60, "Sample workout notes",
+        "Bench Press", 3, 10, 135, "Good form",
+        "Squats", 4, 8, 185, ""
       ]
     ];
     
@@ -477,7 +506,7 @@ export default function ImportWorkoutsModal({ isOpen, onClose, onSuccess }: Impo
                           <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                             {workout.exercises.length > 0 ? (
                               <div>
-                                <span className="font-medium">{workout.exercises.length}</span> exercise{workout.exercises.length !== 1 ? 's' : ''}
+                                <span className="font-medium">{workout.exercises.length}</span> exercise{workout.exercises.length !== 1 && "s"}
                                 <div className="text-xs text-gray-400 mt-1">
                                   {workout.exercises.slice(0, 2).map((ex, i) => (
                                     <div key={i}>{ex.name}</div>

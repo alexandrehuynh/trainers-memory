@@ -1,12 +1,44 @@
+'use client';
+
 import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabaseClient';
 
-// Add type declaration for SpeechRecognition
+// Add proper type declarations for SpeechRecognition
 declare global {
   interface Window {
-    SpeechRecognition?: any;
-    webkitSpeechRecognition?: any;
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
   }
+}
+
+// Define SpeechRecognition interfaces
+interface SpeechRecognitionEvent extends Event {
+  results: SpeechRecognitionResultList;
+  resultIndex: number;
+  interpretation: string;
+}
+
+interface SpeechRecognitionError extends Event {
+  error: string;
+  message: string;
+}
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+  onerror: (event: SpeechRecognitionError) => void;
+  onresult: (event: SpeechRecognitionEvent) => void;
+  onend: () => void;
+}
+
+// Add the constructor interface
+interface SpeechRecognitionConstructor {
+  new(): SpeechRecognition;
+  prototype: SpeechRecognition;
 }
 
 interface VoiceRecorderProps {
@@ -25,31 +57,31 @@ const VoiceRecorder = ({ clientId, onTranscriptGenerated }: VoiceRecorderProps) 
   const audioChunksRef = useRef<Blob[]>([]);
   
   // Initialize speech recognition
-  const speechRecognition = useRef<any>(null);
+  const speechRecognition = useRef<SpeechRecognition | null>(null);
   
   useEffect(() => {
     // Initialize Web Speech API
     if (typeof window !== 'undefined') {
-      const SpeechRecognition = window.SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRecognition) {
-        speechRecognition.current = new SpeechRecognition();
+      const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognitionAPI) {
+        speechRecognition.current = new SpeechRecognitionAPI() as SpeechRecognition;
         speechRecognition.current.continuous = true;
         speechRecognition.current.interimResults = true;
         
-        speechRecognition.current.onresult = (event: any) => {
+        speechRecognition.current.onresult = (event: SpeechRecognitionEvent) => {
           const currentTranscript = Array.from(event.results)
-            .map((result: any) => result[0])
-            .map((result: any) => result.transcript)
+            .map((result: SpeechRecognitionResult) => result[0])
+            .map((result: SpeechRecognitionAlternative) => result.transcript)
             .join('');
           
           setTranscript(currentTranscript);
         };
         
-        speechRecognition.current.onerror = (event: any) => {
+        speechRecognition.current.onerror = (event: SpeechRecognitionError) => {
           setError(`Speech recognition error: ${event.error}`);
         };
       } else {
-        setError('Speech recognition not supported in this browser');
+        setError("Speech recognition not supported in this browser");
       }
     }
     

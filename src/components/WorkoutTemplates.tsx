@@ -39,7 +39,7 @@ export default function WorkoutTemplates({ onSelectTemplate, currentWorkout }: W
       if (savedTemplates) {
         // Parse the saved templates and convert date strings back to Date objects
         const parsedTemplates = JSON.parse(savedTemplates);
-        const templatesWithDates = parsedTemplates.map((template: any) => ({
+        const templatesWithDates = parsedTemplates.map((template: WorkoutTemplate) => ({
           ...template,
           createdAt: new Date(template.createdAt)
         }));

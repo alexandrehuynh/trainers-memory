@@ -16,14 +16,18 @@ export async function signIn(email: string, password: string) {
     }
 
     return { success: true, user: data.user, session: data.session };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Exception during sign in:', error);
-    return { success: false, error: error.message || 'An unknown error occurred' };
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'An unknown error occurred'
+    };
   }
 }
 
 /**
  * Signs out the current user
+ * @internal This function is used by the UI components
  */
 export async function signOut() {
   try {
@@ -35,9 +39,12 @@ export async function signOut() {
     }
     
     return { success: true };
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Exception during sign out:', error);
-    return { success: false, error: error.message || 'An unknown error occurred' };
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'An unknown error occurred'
+    };
   }
 }
 

@@ -58,6 +58,35 @@ if (typeof window !== 'undefined') {
   migrateAuthTokens();
 }
 
+/**
+ * Helper functions for storing data in localStorage and sessionStorage
+ */
+export const setItem = (key: string, value: string, useSession = false) => {
+  try {
+    if (useSession) {
+      sessionStorage.setItem(key, value);
+    } else {
+      localStorage.setItem(key, value);
+    }
+  } catch (e) {
+    // Session storage may not be available in some environments or due to user settings
+    console.warn('Could not save to storage:', e);
+  }
+};
+
+export const removeItem = (key: string, useSession = false) => {
+  try {
+    if (useSession) {
+      sessionStorage.removeItem(key);
+    } else {
+      localStorage.removeItem(key);
+    }
+  } catch (e) {
+    // Session storage may not be available in some environments or due to user settings
+    console.warn('Could not remove from storage:', e);
+  }
+};
+
 // Create the Supabase client with persistence configuration
 export const supabase = createClient(supabaseUrl as string, supabaseKey as string, {
   auth: {
@@ -72,7 +101,9 @@ export const supabase = createClient(supabaseUrl as string, supabaseKey as strin
         if (typeof window === 'undefined') return;
         window.localStorage.setItem(key, value);
         // Also try to set in sessionStorage as a backup
-        try { window.sessionStorage.setItem(key, value); } catch (e) {}
+        try { window.sessionStorage.setItem(key, value); } catch (_) {
+          // Sessiong storage may not be available
+        }
         
         // Manually set a cookie to ensure middleware can access authentication
         if (typeof document !== 'undefined' && value && key.includes('auth')) {
@@ -88,7 +119,9 @@ export const supabase = createClient(supabaseUrl as string, supabaseKey as strin
       removeItem: (key) => {
         if (typeof window === 'undefined') return;
         window.localStorage.removeItem(key);
-        try { window.sessionStorage.removeItem(key); } catch (e) {}
+        try { window.sessionStorage.removeItem(key); } catch (_) {
+          // Session storage may not be available
+        }
         
         // Also remove the cookie
         if (typeof document !== 'undefined' && key.includes('auth')) {
