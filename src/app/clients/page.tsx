@@ -64,9 +64,30 @@ export default function ClientsPage() {
     try {
       console.log('Attempting to fetch clients from API...');
       // Using the updated client API which already handles the response format
-      const clients = await clientsApi.getAll();
-      setClients(clients);
-      console.log('Successfully fetched clients from API:', clients);
+      const response = await clientsApi.getAll();
+      
+      // Log the exact response structure
+      console.log('API Response:', response);
+      console.log('Response type:', typeof response);
+      console.log('Is array:', Array.isArray(response));
+      
+      // Handle both array format and object format with clients property
+      let clientsData = response;
+      
+      // If it's an object with a clients property, use that
+      if (!Array.isArray(response) && response && typeof response === 'object' && 'clients' in response) {
+        console.log('Found clients property in response object');
+        clientsData = (response as {clients: Client[]}).clients;
+      }
+      
+      // Ensure we have an array
+      if (!Array.isArray(clientsData)) {
+        console.error('API did not return an array of clients:', clientsData);
+        throw new Error('Invalid client data format received from API');
+      }
+      
+      console.log('Setting clients state with data:', clientsData);
+      setClients(clientsData);
     } catch (err) {
       console.error('Error fetching clients:', err);
       setError('Failed to load clients from API. Using sample data instead.');
@@ -225,38 +246,46 @@ export default function ClientsPage() {
                 </tr>
               </thead>
               <tbody className={`${theme === 'light' ? 'bg-white divide-y divide-gray-200' : 'bg-gray-800 divide-y divide-gray-700'}`}>
-                {clients.map((client) => (
-                  <tr key={client.id} className={`${theme === 'light' ? 'hover:bg-gray-50' : 'hover:bg-gray-700'}`}>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className={`font-medium ${theme === 'light' ? 'text-gray-900' : 'text-gray-100'}`}>
-                        {client.name}
-                      </div>
-                    </td>
-                    <td className={`px-6 py-4 whitespace-nowrap ${theme === 'light' ? 'text-gray-500' : 'text-gray-300'}`}>
-                      {client.email}
-                    </td>
-                    <td className={`px-6 py-4 whitespace-nowrap ${theme === 'light' ? 'text-gray-500' : 'text-gray-300'}`}>
-                      {client.phone || '-'}
-                    </td>
-                    <td className={`px-6 py-4 whitespace-nowrap ${theme === 'light' ? 'text-gray-500' : 'text-gray-300'}`}>
-                      {new Date(client.created_at).toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <Link
-                        href={`/clients/${client.id}`}
-                        className="text-blue-600 hover:text-blue-900 mr-4"
-                      >
-                        View
-                      </Link>
-                      <Link
-                        href={`/clients/${client.id}/edit`}
-                        className="text-blue-600 hover:text-blue-900"
-                      >
-                        Edit
-                      </Link>
+                {Array.isArray(clients) ? (
+                  clients.map((client) => (
+                    <tr key={client.id} className={`${theme === 'light' ? 'hover:bg-gray-50' : 'hover:bg-gray-700'}`}>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className={`font-medium ${theme === 'light' ? 'text-gray-900' : 'text-gray-100'}`}>
+                          {client.name}
+                        </div>
+                      </td>
+                      <td className={`px-6 py-4 whitespace-nowrap ${theme === 'light' ? 'text-gray-500' : 'text-gray-300'}`}>
+                        {client.email}
+                      </td>
+                      <td className={`px-6 py-4 whitespace-nowrap ${theme === 'light' ? 'text-gray-500' : 'text-gray-300'}`}>
+                        {client.phone || '-'}
+                      </td>
+                      <td className={`px-6 py-4 whitespace-nowrap ${theme === 'light' ? 'text-gray-500' : 'text-gray-300'}`}>
+                        {new Date(client.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <Link
+                          href={`/clients/${client.id}`}
+                          className="text-blue-600 hover:text-blue-900 mr-4"
+                        >
+                          View
+                        </Link>
+                        <Link
+                          href={`/clients/${client.id}/edit`}
+                          className="text-blue-600 hover:text-blue-900"
+                        >
+                          Edit
+                        </Link>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-4 text-center">
+                      <p className="text-gray-500">No clients data available</p>
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
